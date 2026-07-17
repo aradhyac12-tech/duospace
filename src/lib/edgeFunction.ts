@@ -101,7 +101,7 @@ export async function invokeEdgeFunction<T = unknown>(
     // in the background, but the UI stops waiting and shows a clear message.
     let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
     const timeoutPromise = new Promise<never>((_, reject) => {
-      timeoutHandle = window.setTimeout(() => {
+      timeoutHandle = setTimeout(() => {
         reject(Object.assign(new Error("timeout"), { name: "AbortError" }));
       }, timeoutMs);
     });

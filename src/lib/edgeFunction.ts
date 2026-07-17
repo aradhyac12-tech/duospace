@@ -159,7 +159,7 @@ export async function invokeEdgeFunction<T = unknown>(
         requestId,
       );
     } finally {
-      if (timeoutHandle !== undefined) window.clearTimeout(timeoutHandle);
+      if (timeoutHandle !== undefined) clearTimeout(timeoutHandle);
     }
   };
 

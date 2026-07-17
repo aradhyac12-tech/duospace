@@ -99,7 +99,7 @@ export async function invokeEdgeFunction<T = unknown>(
     // racing the invoke() promise against a timer instead of trying to
     // cancel the underlying fetch. The in-flight request may still complete
     // in the background, but the UI stops waiting and shows a clear message.
-    let timeoutHandle: ReturnType<typeof window.setTimeout> | undefined;
+    let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
     const timeoutPromise = new Promise<never>((_, reject) => {
       timeoutHandle = window.setTimeout(() => {
         reject(Object.assign(new Error("timeout"), { name: "AbortError" }));

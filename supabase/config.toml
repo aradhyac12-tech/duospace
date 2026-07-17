@@ -1,0 +1,7 @@
+project_id = "povhwwcswvfihmcdqgyv"
+
+[functions.qr-anon-issue]
+verify_jwt = false
+
+[functions.redeem-qr-token]
+verify_jwt = false

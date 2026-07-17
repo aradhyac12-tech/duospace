@@ -1,69 +1,78 @@
+# Plan: Sign-in alerts, Google Drive via connector, default email sender
 
-# Duospace Import + Fresh Auth Provisioning
+## 1. Email sender — use Lovable default (no branded domain)
 
-The current project is an empty TanStack Start template. The upload is a full Vite + React Router + Capacitor SPA (`guardian-zen-patch-main/`) with ~50 Supabase migrations, edge functions, and a Capacitor shell. To keep the app runnable on web preview AND on Capacitor (which needs a static SPA build), we import the zip wholesale, throw out the TanStack scaffolding, and stand up a fresh Lovable Cloud project for it.
+Skip the email domain setup. Auth emails (signup confirm, password reset, magic link) will send from Lovable's default sender automatically — no branding, but works out of the box. This unblocks password reset and confirmation flows immediately.
 
-## 1. Import the zip as the project
+Because there is no verified sender domain, we can't scaffold branded auth templates or the queue-based transactional pipeline. Sign-in device alerts will instead be sent through Resend using the shared `noreply@resend.dev` sender already wired in `send-email` (RESEND_API_KEY already configured).
 
-- Extract `guardian-zen-patch-main/` into the project root, excluding any `.git` metadata and the uploaded `.env` (secrets go into Cloud, not committed).
-- Remove TanStack template files that don't apply to a Vite SPA: `src/routes/`, `src/router.tsx`, `src/routeTree.gen.ts`, `src/start.ts`, `src/server.ts`, `src/styles.css` (replaced by imported `src/index.css`), and the TanStack-specific `vite.config.ts` / `package.json` bits.
-- Replace `package.json`, `vite.config.ts`, `tsconfig.json`, `index.html`, `tailwind.config.ts`, `postcss.config.js`, `components.json` from the zip. Install with `bun install` (Capacitor, `@capacitor/browser`, `@supabase/supabase-js`, React Router DOM, etc.).
-- Keep the Lovable-generated `.gitignore` / `.prettier*` where they don't conflict.
+## 2. Instagram-style new-device sign-in alerts
 
-## 2. Provision fresh Lovable Cloud
+Send an email **only** when the user signs in from a device fingerprint we haven't seen before.
 
-- Call `supabase--enable` to create a new Supabase project fully managed from here.
-- Rewrite `src/integrations/supabase/client.ts` to read `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` from `import.meta.env` (no hardcoded old project ref).
-- Regenerate `src/integrations/supabase/types.ts` off the new project after migrations apply.
-- Run the imported `supabase/migrations/*` fresh against the new project (single consolidated migration if any of them are ordering-fragile; otherwise apply as-is). No data import — new project, empty state.
-- Verify every `CREATE TABLE public.*` in the migrations has matching `GRANT` + RLS + policies; add a follow-up migration for any missing grants (Supabase no longer grants Data API access by default).
+### Data
 
-## 3. Auth providers
+New table `known_devices`:
 
-- Enable Email/Password with email confirmation on and `password_hibp_enabled: true` (leaked-password check) via `supabase--configure_auth`.
-- Enable Google and Apple providers via `supabase--configure_social_auth`. Surface the exact callback URL: `https://<new-ref>.supabase.co/auth/v1/callback`.
-- Add secrets via `add_secret` (never committed):
-  - `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`
-  - `APPLE_OAUTH_CLIENT_ID` (Services ID), `APPLE_OAUTH_CLIENT_SECRET` (signed JWT)
-- Configure redirect allow-list on the new project:
-  - Preview URL + `/auth/callback`
-  - Published URL + `/auth/callback`
-  - `http://localhost` + `/auth/callback`
-  - `capacitor://localhost` + `/auth/callback`
-  - `duospace://auth/callback`
-- The uploaded `client_secret_*.json` (old orphan client, redirect points at `connector-gateway.lovable.dev`) is unusable for the new project — user must create fresh Google and Apple credentials. Provide step-by-step instructions in the closing summary.
+- `id uuid pk`
+- `user_id uuid → auth.users`
+- `fingerprint text` (SHA-256 of UA + platform + language + screen + timezone)
+- `label text` (e.g. "Chrome on macOS")
+- `last_seen_at timestamptz`
+- `first_seen_at timestamptz`
+- unique(user_id, fingerprint)
+- RLS: users can read/delete their own rows; inserts go through the edge function (service role).
+- GRANT SELECT, DELETE on authenticated; GRANT ALL on service_role.
 
-## 4. Verify frontend OAuth code survived the import
+### Edge function `notify-signin` (verify_jwt = true)
 
-- Confirm `src/pages/Auth.tsx` calls `supabase.auth.signInWithOAuth()` directly (not a Lovable proxy), with Capacitor branch using `@capacitor/browser` + `skipBrowserRedirect: true`. Restore if reverted.
-- Confirm `src/lib/auth-redirect.ts` returns `${origin}/auth/callback` on web and `duospace://auth/callback` on native.
-- Confirm `src/lib/edgeFunction.ts` (15s timeout + one transport-retry) is intact and used by `QRSignInDisplay.tsx` / `QRSignInScanner.tsx`.
+Input: `{ fingerprint, userAgent, platform, timezone }` from client.
+Steps:
 
-## 5. QR sign-in edge functions
+1. Auth the caller via JWT → get user + email.
+2. Look up `known_devices(user_id, fingerprint)`.
+3. If found → update `last_seen_at`, return `{ known: true }`. No email.
+4. If not found → insert row, then call `send-email` internally (service-role invocation) with a formatted alert: device label, approximate location from Cloudflare `cf-ipcountry` / `x-forwarded-for` (best-effort, no external API), timestamp, and a "This wasn't me → secure account" link to `/settings#security`.
+5. Rate-limit via existing `consume_rate_limit` (max 3 alerts / user / hour) to prevent spam if fingerprint churns.
 
-Deploy `supabase/functions/issue-qr-token`, `qr-anon-issue`, `redeem-qr-token` on the new project:
+### Client wiring
 
-- Explicit CORS: allow-list origins (`preview`, `published`, `capacitor://localhost`, `http://localhost`) — no wildcard. Handle `OPTIONS` preflight.
-- `issue-qr-token` + `redeem-qr-token`: require a valid JWT (`supabase.auth.getUser()` → 401 with CORS on failure).
-- `qr-anon-issue`: unauthenticated but IP rate-limited (simple table-based or KV counter).
-- Add a `qr_tokens` migration if not present: `token`, `issuer`, `purpose`, `expires_at`, `redeemed_at`, RLS + explicit `GRANT`s to `service_role` (functions use service role), plus a scheduled TTL cleanup.
+In `AppLayout` (or `useAuth`), on `SIGNED_IN` event only (not `TOKEN_REFRESHED` / `INITIAL_SESSION`):
 
-## 6. Verification pass
+- Compute fingerprint from `navigator.userAgent + platform + language + screen.width×height + Intl.DateTimeFormat().resolvedOptions().timeZone`, hash with SubtleCrypto SHA-256.
+- Fire-and-forget `supabase.functions.invoke('notify-signin', { body: {...} })`.
 
-- Web: sign up + sign in with email; confirm session persists across reload.
-- Web: click Google/Apple → real provider consent (not 404, not "missing OAuth secret").
-- Curl `issue-qr-token` with a bearer → 200 JSON; without → 401 with CORS headers.
-- Report what's fixed vs. what still needs user action (native Info.plist / AndroidManifest camera & deep-link entries user must verify in Xcode/Android Studio — outside sandbox visibility).
+Settings gets a "Recent devices" list reading from `known_devices` with a "Remove" button per row (deleting a row means next sign-in from that device triggers a new alert).
 
-## 7. Closing handoff
+## 3. Google Drive backup via Lovable connector
 
-Final message will list, per credential:
-- **Google Cloud Console**: create OAuth 2.0 Web Client, authorized redirect URI = `https://<new-ref>.supabase.co/auth/v1/callback`, paste Client ID → `GOOGLE_OAUTH_CLIENT_ID`, Secret → `GOOGLE_OAUTH_CLIENT_SECRET`.
-- **Apple Developer**: create Services ID + Sign-in with Apple key (.p8), generate signed client-secret JWT (Team ID + Key ID + .p8), Return URL = same callback, paste Services ID → `APPLE_OAUTH_CLIENT_ID`, JWT → `APPLE_OAUTH_CLIENT_SECRET`.
-- Native-only checks the user must verify locally (Info.plist camera usage strings, `duospace` URL scheme registration, AndroidManifest intent filter).
+Use the `google_drive` App connector (workspace-linked Google account, gateway-routed) instead of custom OAuth. This removes the need for `GOOGLE_DRIVE_CLIENT_ID`/`_SECRET`.
 
-## Notes / risks
+Caveat to flag to the user: the App connector authenticates **one Google account for the whole app** (the builder's), not per-end-user. If the user truly wants each end-user to pick their own Google account (WhatsApp-style), that requires the **App User Connector** flow, not the standard connector. I'll ask below.
 
-- The imported migrations span ~50 files with heavy interdependencies; if any fail on the fresh project I'll consolidate the failing group rather than editing history piecemeal.
-- Chat/calls/gallery/etc. code is imported as-is and NOT touched beyond what's required for auth to compile and run.
-- Old orphan Google credentials in the uploaded JSON are ignored; new ones will be created on the user's side.
+### Steps (assuming App connector path is chosen)
+
+1. Call `standard_connectors--list_app_connectors`, then `standard_connectors--connect` with `connector_id: "google_drive"` so the user picks/creates a Google connection.
+2. New edge function `gdrive-backup` (verify_jwt = true):
+  - Authenticates caller.
+  - Reads user's backup payload (encrypted blob of messages/settings from client).
+  - POSTs to `https://connector-gateway.lovable.dev/google_drive/upload/drive/v3/files?uploadType=multipart` with `Authorization: Bearer ${LOVABLE_API_KEY}` and `X-Connection-Api-Key: ${GOOGLE_DRIVE_API_KEY}`.
+  - Stores file in `appDataFolder` with metadata `{ name: 'duospace-backup-<userId>-<ts>.json' }`.
+  - Returns `{ fileId, size, createdAt }`.
+3. New edge function `gdrive-list-backups`: GET `/drive/v3/files?spaces=appDataFolder&q=name contains 'duospace-backup'`.
+4. New edge function `gdrive-restore`: GET `/drive/v3/files/{fileId}?alt=media`.
+5. Update `BackupManager.tsx`:
+  - "Back up now" → invoke `gdrive-backup`.
+  - "Restore" → list + pick + restore.
+  - Show connection status: "Connected to Google Drive (app account)".
+  - Remove any leftover custom-OAuth UI.
+6. Store `last_backup_at` and `last_backup_file_id` in `user_secrets` (columns already exist per prior migration or add if missing).
+
+## Clarifying questions
+
+1. **Google account picker scope** — for Drive backup, do you want:
+  - (b) Each end-user picks/connects their own Google account (WhatsApp-style — requires the App User Connector flow, which needs a workspace-level OAuth client configured once)?
+   Pick (b) if you want the true WhatsApp experience.
+2. **Confirm default sender** — you're okay with sign-in alert emails coming from `noreply@resend.dev` (no branding) for now, and we'll revisit branded sender later when you set up a domain?
+
+Once you answer, I'll switch to build and ship it.

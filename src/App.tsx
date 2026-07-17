@@ -1,0 +1,188 @@
+import { Toaster } from "@/components/ui/toaster";
+import { Toaster as Sonner } from "@/components/ui/sonner";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { useAuth } from "@/hooks/useAuth";
+import { ThemeProvider, useTheme } from "@/contexts/ThemeContext";
+
+import AppLayout from "@/components/AppLayout";
+import AppLockScreen from "@/components/AppLockScreen";
+import PeekGuard from "@/components/PeekGuard";
+import Auth from "@/pages/Auth";
+import ResetPassword from "@/pages/ResetPassword";
+import Onboarding from "@/pages/Onboarding";
+import { useState, useEffect, lazy, Suspense } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { usePushNotifications } from "@/hooks/usePushNotifications";
+import { useLaunchPermissions } from "@/hooks/useLaunchPermissions";
+import storage from "@/lib/storage";
+
+// Lazy chunks with preload handles so we can warm them on app mount / nav hover.
+const ChatImport = () => import("@/pages/Chat");
+const GalleryImport = () => import("@/pages/Gallery");
+const CallsImport = () => import("@/pages/Calls");
+const PlaylistImport = () => import("@/pages/Playlist");
+const ShayariImport = () => import("@/pages/Shayari");
+const MapImport = () => import("@/pages/MapView");
+const UsImport = () => import("@/pages/Us");
+const SettingsImport = () => import("@/pages/Settings");
+const GroicImport = () => import("@/pages/Groic");
+
+const Chat = lazy(ChatImport);
+const Gallery = lazy(GalleryImport);
+const Calls = lazy(CallsImport);
+const Playlist = lazy(PlaylistImport);
+const Shayari = lazy(ShayariImport);
+const MapView = lazy(MapImport);
+const Us = lazy(UsImport);
+const Settings = lazy(SettingsImport);
+const Groic = lazy(GroicImport);
+const NotFound = lazy(() => import("@/pages/NotFound"));
+
+// Expose preloaders so BottomNav can warm a chunk on touchstart/hover.
+export const routePreload: Record<string, () => Promise<unknown>> = {
+  "/chat": ChatImport,
+  "/gallery": GalleryImport,
+  "/calls": CallsImport,
+  "/playlist": PlaylistImport,
+  "/shayari": ShayariImport,
+  "/map": MapImport,
+  "/us": UsImport,
+  "/settings": SettingsImport,
+  "/groic": GroicImport,
+};
+
+import { PageSkeleton } from "@/components/skeletons/PageSkeleton";
+
+const PageFallback = ({ variant = "default" as const }) => <PageSkeleton variant={variant} />;
+
+
+const queryClient = new QueryClient();
+
+const ProtectedRoutes = () => {
+  const { user, loading } = useAuth();
+  const { isAppLocked } = useTheme();
+  const [needsOnboarding, setNeedsOnboarding] = useState<boolean | null>(null);
+  usePushNotifications();
+
+  useEffect(() => {
+    if (!user) {
+      setNeedsOnboarding(null);
+      return;
+    }
+    const checkProfile = async () => {
+      const { data } = await supabase
+        .from("profiles")
+        .select("gender, display_name")
+        .eq("user_id", user.id)
+        .single();
+      setNeedsOnboarding(!data?.gender);
+    };
+    checkProfile();
+  }, [user]);
+
+  // Preload all route chunks during idle time so first tab tap is instant.
+  useEffect(() => {
+    if (!user) return;
+    const idle = (cb: () => void) =>
+      (window as any).requestIdleCallback?.(cb, { timeout: 1500 }) ?? setTimeout(cb, 600);
+    const handle = idle(() => {
+      Object.values(routePreload).forEach((p) => { p().catch(() => {}); });
+    });
+    return () => {
+      (window as any).cancelIdleCallback?.(handle);
+      clearTimeout(handle as any);
+    };
+  }, [user]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-center space-y-3">
+          <div className="h-10 w-10 rounded-full bg-muted mx-auto flex items-center justify-center">
+            <span className="text-sm font-semibold text-muted-foreground">
+              {(storage.get("duo-app-name") || "DS").slice(0, 2).toUpperCase()}
+            </span>
+          </div>
+          <p className="text-xs text-muted-foreground animate-pulse">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) return <Navigate to="/auth" replace />;
+
+  if (needsOnboarding === null) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <p className="text-xs text-muted-foreground animate-pulse">Setting up...</p>
+      </div>
+    );
+  }
+
+  if (needsOnboarding) {
+    return <Onboarding onComplete={() => setNeedsOnboarding(false)} />;
+  }
+
+  if (isAppLocked) return <AppLockScreen />;
+
+  return <AppLayout />;
+};
+
+/** Suspense wrapper that shows the right skeleton per route. */
+const Lazy = ({ el, variant }: { el: React.ReactNode; variant: "chat" | "grid" | "list" | "map" | "settings" | "default" }) => (
+  <Suspense fallback={<PageSkeleton variant={variant} />}>{el}</Suspense>
+);
+
+const AuthRoute = () => {
+  const { user, loading } = useAuth();
+  if (loading) return null;
+  if (user) {
+    const params = new URLSearchParams(window.location.search);
+    const pendingInvite = params.get("invite") || sessionStorage.getItem("duo-pending-invite");
+    if (pendingInvite) return <Navigate to={`/settings?invite=${encodeURIComponent(pendingInvite)}`} replace />;
+    return <Navigate to="/chat" replace />;
+  }
+  return <Auth />;
+};
+
+const App = () => {
+  useLaunchPermissions();
+  return (
+  <QueryClientProvider client={queryClient}>
+    <ThemeProvider>
+      <TooltipProvider>
+        <Toaster />
+        <Sonner />
+        <PeekGuard />
+        <BrowserRouter>
+          <Suspense fallback={<PageFallback />}>
+          <Routes>
+            <Route path="/auth" element={<AuthRoute />} />
+            <Route path="/auth/callback" element={<AuthRoute />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
+            <Route path="/" element={<Navigate to="/chat" replace />} />
+            <Route path="/index" element={<Navigate to="/chat" replace />} />
+            <Route element={<ProtectedRoutes />}>
+              <Route path="/chat" element={<Lazy variant="chat" el={<Chat />} />} />
+              <Route path="/gallery" element={<Lazy variant="grid" el={<Gallery />} />} />
+              <Route path="/calls" element={<Lazy variant="list" el={<Calls />} />} />
+              <Route path="/playlist" element={<Lazy variant="list" el={<Playlist />} />} />
+              <Route path="/shayari" element={<Lazy variant="list" el={<Shayari />} />} />
+              <Route path="/map" element={<Lazy variant="map" el={<MapView />} />} />
+              <Route path="/us" element={<Lazy variant="list" el={<Us />} />} />
+              <Route path="/settings" element={<Lazy variant="settings" el={<Settings />} />} />
+              <Route path="/groic" element={<Lazy variant="list" el={<Groic />} />} />
+            </Route>
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+          </Suspense>
+        </BrowserRouter>
+      </TooltipProvider>
+    </ThemeProvider>
+  </QueryClientProvider>
+  );
+};
+
+export default App;

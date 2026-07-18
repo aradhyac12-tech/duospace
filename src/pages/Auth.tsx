@@ -45,7 +45,7 @@ const Auth = () => {
   const [displayName, setDisplayName] = useState("");
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
-  const [appleLoading, setAppleLoading] = useState(false);
+  
   const [showForgot, setShowForgot] = useState(false);
   const [forgotEmail, setForgotEmail] = useState("");
   const [forgotLoading, setForgotLoading] = useState(false);
@@ -417,7 +417,7 @@ const Auth = () => {
   // screen ever loads. Supabase Auth already has Google and Apple configured
   // as providers (those credentials are untouched); the fix is to initiate
   // the flow with Supabase's own, correctly-routed `signInWithOAuth`.
-  const startOAuth = async (provider: "google" | "apple", extraQueryParams?: Record<string, string>) => {
+  const startOAuth = async (provider: "google", extraQueryParams?: Record<string, string>) => {
     const traceId = newTraceId(`oauth_${provider}`);
     const redirectUri = getAuthRedirectUri();
     logInfo("auth.oauth", "initiate", {
@@ -468,7 +468,7 @@ const Auth = () => {
         request_id: traceId, provider, redirect_uri: redirectUri,
         status: "error", err: supaErr(err),
       }, traceId);
-      const label = provider === "google" ? "Google" : "Apple";
+      const label = "Google";
       toast({
         title: `${label} sign-in failed`,
         description: readableError(err) || "Unable to start sign-in. Please check your internet connection or try again later.",
@@ -488,15 +488,6 @@ const Auth = () => {
     setGoogleLoading(false);
   };
 
-  const handleAppleLogin = async () => {
-    setAppleLoading(true);
-    try {
-      await startOAuth("apple");
-    } catch {
-      /* toast already shown in startOAuth */
-    }
-    setAppleLoading(false);
-  };
 
   // OAuth processing state
   if (oauthProcessing) {
@@ -614,21 +605,6 @@ const Auth = () => {
               </svg>
             )}
             Continue with Google
-          </Button>
-          <Button
-            onClick={handleAppleLogin}
-            disabled={appleLoading}
-            variant="outline"
-            className="w-full h-12 rounded-xl gap-3 text-sm font-medium"
-          >
-            {appleLoading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M17.05 20.28c-.98.95-2.05.88-3.08.4-1.09-.5-2.08-.48-3.24 0-1.44.62-2.2.44-3.06-.4C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z" />
-              </svg>
-            )}
-            Continue with Apple
           </Button>
           <Button
             onClick={() => { setQrPanel("scan"); setShowQrScanner(true); }}

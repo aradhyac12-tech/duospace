@@ -120,7 +120,7 @@ export async function invokeEdgeFunction<T = unknown>(
         if (isNetworkError(error)) {
           logWarn("edgefn", `${name} network failure`, { requestId, attemptNum, ms }, requestId);
           throw new EdgeFunctionError(
-            "Unable to contact the server. Please check your internet connection or try again later.",
+            `The "${name}" server function isn't reachable. It may not be deployed yet, or your connection dropped. Try again in a moment.`,
             "network",
             requestId,
           );

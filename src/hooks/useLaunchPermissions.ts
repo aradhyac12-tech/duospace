@@ -28,6 +28,17 @@ export function useLaunchPermissions() {
     if (!Capacitor.isNativePlatform()) return;
 
     const run = async () => {
+      // Explicitly hide the splash before prompting, so the OS permission
+      // dialogs never stack behind the splash image on slower devices.
+      try {
+        const { SplashScreen } = await import("@capacitor/splash-screen");
+        await SplashScreen.hide();
+      } catch {
+        /* splash plugin not installed — carry on */
+      }
+      // Small settle delay so the first prompt doesn't collide with the
+      // splash fade-out animation on iOS.
+      await new Promise((r) => setTimeout(r, 300));
       // Camera — used by the QR scanner and in-chat photo/video capture.
       try {
         const { Camera } = await import("@capacitor/camera");

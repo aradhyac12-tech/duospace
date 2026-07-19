@@ -18,6 +18,48 @@ The app uses Resend for sending password reset and verification emails.
 3. Link redirects to `/reset-password` where they set a new password
 4. Password updated via `supabase.auth.updateUser()`
 
+## Auth redirect URLs
+
+Add these exact URLs in Supabase Dashboard → Authentication → URL Configuration → Redirect URLs:
+
+```text
+https://web-duospace.lovable.app/auth/callback
+https://web-duospace.lovable.app/reset-password
+https://id-preview--8d9c3eda-6653-478e-bc47-b4ffd4636f5f.lovable.app/auth/callback
+https://id-preview--8d9c3eda-6653-478e-bc47-b4ffd4636f5f.lovable.app/reset-password
+http://localhost:8080/auth/callback
+http://localhost:8080/reset-password
+duospace://auth
+duospace://auth/reset-password
+```
+
+Do not use `http://localhost:3000` or `null` as a redirect URL. Google should point back to Supabase's callback URL:
+
+```text
+https://jzlpelxwzjjpddqcrtpu.supabase.co/auth/v1/callback
+```
+
+## Required Edge Functions
+
+Deploy these auth functions to the Supabase project `jzlpelxwzjjpddqcrtpu`:
+
+```bash
+supabase functions deploy qr-anon-issue issue-qr-token redeem-qr-token notify-signin send-email set-email-password
+```
+
+Set these function secrets before using email/device alerts:
+
+```text
+SUPABASE_URL=https://jzlpelxwzjjpddqcrtpu.supabase.co
+SUPABASE_ANON_KEY=<anon key>
+SUPABASE_SERVICE_ROLE_KEY=<rotated service role key>
+RESEND_API_KEY=<resend key>
+EMAIL_FROM=DuoSpace <your verified sender>
+ALLOWED_ORIGIN=*
+```
+
+`qr-anon-issue` and `redeem-qr-token` must keep `verify_jwt = false`; `supabase/config.toml` already has this.
+
 ---
 
 ## Prerequisites

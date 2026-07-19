@@ -127,6 +127,14 @@ export async function invokeEdgeFunction<T = unknown>(
         }
 
         logWarn("edgefn", `${name} returned an error`, { requestId, attemptNum, status, detail }, requestId);
+        if (status === 404 || /not found|requested function was not found/i.test(detail ?? error.message ?? "")) {
+          throw new EdgeFunctionError(
+            `The "${name}" server function is not deployed in this Supabase project yet. Deploy it to project jzlpelxwzjjpddqcrtpu and try again.`,
+            "http",
+            requestId,
+            status,
+          );
+        }
         throw new EdgeFunctionError(
           detail || error.message || "The server rejected the request.",
           "http",

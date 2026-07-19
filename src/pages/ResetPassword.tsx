@@ -13,6 +13,7 @@ const ResetPassword = () => {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [checkingLink, setCheckingLink] = useState(true);
   const [isRecovery, setIsRecovery] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -42,7 +43,9 @@ const ResetPassword = () => {
       }
     };
 
-    void parseRecovery();
+    void parseRecovery().finally(() => {
+      if (!cancelled) setCheckingLink(false);
+    });
 
     // Listen for PASSWORD_RECOVERY event
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
@@ -81,6 +84,14 @@ const ResetPassword = () => {
     }
     setLoading(false);
   };
+
+  if (checkingLink) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background px-6">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
   if (!isRecovery) {
     return (

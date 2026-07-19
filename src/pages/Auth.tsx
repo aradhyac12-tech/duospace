@@ -239,13 +239,14 @@ const Auth = () => {
     }
     const traceId = newTraceId("signup");
     const emailHash = await hashEmail(email);
-    const redirectUri = getAuthRedirectUri();
+    let redirectUri = "";
     setLoading(true);
-    logInfo("auth.signup", "token exchange start", {
-      request_id: traceId, origin: window.location.origin,
-      redirect_uri: redirectUri, email_hash: emailHash,
-    }, traceId);
     try {
+      redirectUri = getAuthRedirectUri();
+      logInfo("auth.signup", "token exchange start", {
+        request_id: traceId, origin: window.location.origin,
+        redirect_uri: redirectUri, email_hash: emailHash,
+      }, traceId);
       const { data, error } = await supabase.auth.signUp({
         email: email.trim(),
         password,
@@ -298,15 +299,19 @@ const Auth = () => {
     if (!forgotEmail.trim()) return;
     const traceId = newTraceId("pwreset");
     const emailHash = await hashEmail(forgotEmail);
-    const redirectTo = isNativePlatform()
-      ? "duospace://auth/reset-password"
-      : `${window.location.origin}/reset-password`;
+    let redirectTo = "";
     setForgotLoading(true);
-    logInfo("auth.pwreset", "request start", {
-      request_id: traceId, origin: window.location.origin,
-      redirect_uri: redirectTo, email_hash: emailHash,
-    }, traceId);
     try {
+      if (!isNativePlatform() && (window.location.origin === "null" || window.location.origin === "http://localhost:3000")) {
+        throw new Error("This reset-link origin is invalid. Open DuoSpace from the Lovable preview/published URL and try again.");
+      }
+      redirectTo = isNativePlatform()
+        ? "duospace://auth/reset-password"
+        : `${window.location.origin}/reset-password`;
+      logInfo("auth.pwreset", "request start", {
+        request_id: traceId, origin: window.location.origin,
+        redirect_uri: redirectTo, email_hash: emailHash,
+      }, traceId);
       const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail.trim(), { redirectTo });
       if (error) {
         logError("auth.pwreset", "request failed", {

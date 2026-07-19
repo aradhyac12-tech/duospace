@@ -17,6 +17,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { useLaunchPermissions } from "@/hooks/useLaunchPermissions";
 import storage from "@/lib/storage";
+import { hasAuthCallback, parseAuthCallbackUrl } from "@/lib/auth-callback";
 
 // Lazy chunks with preload handles so we can warm them on app mount / nav hover.
 const ChatImport = () => import("@/pages/Chat");
@@ -138,8 +139,11 @@ const Lazy = ({ el, variant }: { el: React.ReactNode; variant: "chat" | "grid" |
 const AuthRoute = () => {
   const { user, loading } = useAuth();
   if (loading) return null;
+  if (window.location.pathname === "/auth/callback" && hasAuthCallback()) return <Auth />;
   if (user) {
     const params = new URLSearchParams(window.location.search);
+    const callback = hasAuthCallback() ? parseAuthCallbackUrl() : null;
+    if (callback?.get("type") === "recovery") return <Navigate to="/reset-password" replace />;
     const pendingInvite = params.get("invite") || sessionStorage.getItem("duo-pending-invite");
     if (pendingInvite) return <Navigate to={`/settings?invite=${encodeURIComponent(pendingInvite)}`} replace />;
     return <Navigate to="/chat" replace />;

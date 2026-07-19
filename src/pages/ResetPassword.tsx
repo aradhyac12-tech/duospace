@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import { Loader2, Lock } from "lucide-react";
+import { cleanAuthCallbackUrl, completeAuthCallback, hasAuthCallback, parseAuthCallbackUrl } from "@/lib/auth-callback";
 
 const ResetPassword = () => {
   const [password, setPassword] = useState("");
@@ -17,11 +18,31 @@ const ResetPassword = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Check if this is a recovery flow from the URL hash
-    const hash = window.location.hash;
-    if (hash.includes("type=recovery")) {
-      setIsRecovery(true);
-    }
+    let cancelled = false;
+
+    const parseRecovery = async () => {
+      if (!hasAuthCallback()) return;
+      const callback = parseAuthCallbackUrl();
+      const isRecoveryLink = callback.get("type") === "recovery";
+      if (!isRecoveryLink) return;
+      try {
+        await completeAuthCallback();
+        if (!cancelled) {
+          setIsRecovery(true);
+          cleanAuthCallbackUrl("/reset-password");
+        }
+      } catch (error) {
+        if (!cancelled) {
+          toast({
+            title: "Invalid reset link",
+            description: error instanceof Error ? error.message : String(error),
+            variant: "destructive",
+          });
+        }
+      }
+    };
+
+    void parseRecovery();
 
     // Listen for PASSWORD_RECOVERY event
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
@@ -30,8 +51,11 @@ const ResetPassword = () => {
       }
     });
 
-    return () => subscription.unsubscribe();
-  }, []);
+    return () => {
+      cancelled = true;
+      subscription.unsubscribe();
+    };
+  }, [toast]);
 
   const handleReset = async (e: React.FormEvent) => {
     e.preventDefault();

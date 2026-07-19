@@ -1,5 +1,18 @@
 project_id = "jzlpelxwzjjpddqcrtpu"
 
+[auth]
+site_url = "https://web-duospace.lovable.app"
+additional_redirect_urls = [
+  "https://web-duospace.lovable.app/auth/callback",
+  "https://web-duospace.lovable.app/reset-password",
+  "https://id-preview--8d9c3eda-6653-478e-bc47-b4ffd4636f5f.lovable.app/auth/callback",
+  "https://id-preview--8d9c3eda-6653-478e-bc47-b4ffd4636f5f.lovable.app/reset-password",
+  "http://localhost:8080/auth/callback",
+  "http://localhost:8080/reset-password",
+  "duospace://auth",
+  "duospace://auth/reset-password"
+]
+
 [functions.qr-anon-issue]
 verify_jwt = false
 

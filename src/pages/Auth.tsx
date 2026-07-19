@@ -10,10 +10,12 @@ import storage from "@/lib/storage";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Loader2, QrCode } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import QRSignInScanner from "@/components/auth/QRSignInScanner";
 import QRSignInDisplay from "@/components/auth/QRSignInDisplay";
 import PasskeyLogin from "@/components/auth/PasskeyLogin";
 import { logInfo, logWarn, logError, newTraceId } from "@/lib/telemetry";
+import { cleanAuthCallbackUrl, completeAuthCallback, getPostAuthPath, hasAuthCallback, parseAuthCallbackUrl } from "@/lib/auth-callback";
 
 // Structured-logging helpers for the auth surface.
 // We deliberately log: request_id (traceId), origin, redirect_uri, status (ok|error|redirected),
@@ -54,10 +56,10 @@ const Auth = () => {
   const [qrPanel, setQrPanel] = useState<"scan" | "display">("scan");
   const [authTab, setAuthTab] = useState<"login" | "signup">("login");
   const { toast } = useToast();
+  const navigate = useNavigate();
 
   // Handle OAuth callback - check for hash fragments or query params indicating a callback
   useEffect(() => {
-    const hash = window.location.hash;
     const params = new URLSearchParams(window.location.search);
     const inviteCode = params.get("invite");
 
@@ -65,110 +67,50 @@ const Auth = () => {
       sessionStorage.setItem("duo-pending-invite", inviteCode.toUpperCase());
     }
 
-    const clearCallbackUrl = () => {
-      const inviteSuffix = inviteCode ? `?invite=${encodeURIComponent(inviteCode)}` : "";
-      window.history.replaceState({}, "", `${window.location.pathname}${inviteSuffix}`);
-    };
-
-    const hasOAuthCallback =
-      hash.includes("access_token") ||
-      hash.includes("error_description") ||
-      Boolean(params.get("error")) ||
-      Boolean(params.get("code"));
-
-    if (hasOAuthCallback) {
+    if (hasAuthCallback()) {
       const traceId = newTraceId("oauth_cb");
       let cancelled = false;
       setOauthProcessing(true);
+      const parsed = parseAuthCallbackUrl();
 
       logInfo("auth.oauth", "callback received", {
         request_id: traceId,
         origin: window.location.origin,
-        has_access_token: hash.includes("access_token"),
-        has_code: Boolean(params.get("code")),
-        has_error: hash.includes("error_description") || Boolean(params.get("error")),
+        has_access_token: Boolean(parsed.get("access_token")),
+        has_code: Boolean(parsed.get("code")),
+        has_error: Boolean(parsed.get("error") || parsed.get("error_description")),
       }, traceId);
 
-      if (hash.includes("error_description")) {
-        const errorDesc = decodeURIComponent(hash.split("error_description=")[1]?.split("&")[0] || "Authentication failed");
-        logError("auth.oauth", "callback error in hash", {
-          request_id: traceId, origin: window.location.origin, error: errorDesc, status: "error",
-        }, traceId);
-        toast({ title: "Sign in failed", description: errorDesc, variant: "destructive" });
-        setOauthProcessing(false);
-        clearCallbackUrl();
-        return;
-      }
-
-      if (params.get("error")) {
-        const errorDesc = params.get("error_description") || "Authentication failed";
-        logError("auth.oauth", "callback error in query", {
-          request_id: traceId, origin: window.location.origin,
-          error: params.get("error"), error_description: errorDesc, status: "error",
-        }, traceId);
-        toast({ title: "Sign in failed", description: errorDesc, variant: "destructive" });
-        setOauthProcessing(false);
-        clearCallbackUrl();
-        return;
-      }
-
-      const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-        if (session && !cancelled) {
-          logInfo("auth.oauth", "session established via auth state", {
-            request_id: traceId, event, status: "ok", user_id: session.user.id,
-          }, traceId);
-          clearCallbackUrl();
-          setOauthProcessing(false);
-        }
-      });
-
       const finalizeOAuth = async () => {
-        const code = params.get("code");
-        if (code) {
-          const { data, error } = await supabase.auth.exchangeCodeForSession(code);
-          if (data.session && !cancelled) {
-            logInfo("auth.oauth", "session established via code exchange", {
-              request_id: traceId, status: "ok", user_id: data.session.user.id,
+        try {
+          const result = await completeAuthCallback();
+          if (cancelled) return;
+          if (result.session) {
+            logInfo("auth.oauth", "session established via callback finalizer", {
+              request_id: traceId, status: "ok", user_id: result.session.user.id,
+              callback_type: result.type,
             }, traceId);
-            clearCallbackUrl();
+            const next = result.type === "recovery" ? "/reset-password" : getPostAuthPath();
+            cleanAuthCallbackUrl(window.location.pathname);
             setOauthProcessing(false);
+            navigate(next, { replace: true });
             return;
           }
-          if (error) {
-            logWarn("auth.oauth", "code exchange deferred to session poll", {
-              request_id: traceId, error: supaErr(error),
-            }, traceId);
-          }
-        }
-
-        for (let attempt = 0; attempt < 12; attempt += 1) {
-          const { data: { session }, error } = await supabase.auth.getSession();
-          if (error) {
-            logWarn("auth.oauth", "getSession poll error", {
-              request_id: traceId, attempt, error: supaErr(error),
-            }, traceId);
-          }
-          if (session) {
-            if (!cancelled) {
-              logInfo("auth.oauth", "session established via poll", {
-                request_id: traceId, attempt, status: "ok", user_id: session.user.id,
-              }, traceId);
-              clearCallbackUrl();
-              setOauthProcessing(false);
-            }
-            return;
-          }
-
-          await new Promise((resolve) => window.setTimeout(resolve, 400));
-        }
-
-        if (!cancelled) {
-          logError("auth.oauth", "callback finalize timeout", {
-            request_id: traceId, origin: window.location.origin,
-            status: "timeout", attempts: 12,
+          logError("auth.oauth", "callback finalizer returned no session", {
+            request_id: traceId, origin: window.location.origin, status: "no_session",
           }, traceId);
-          clearCallbackUrl();
-          setOauthProcessing(false);
+          toast({ title: "Sign in failed", description: "No session was returned. Please try again.", variant: "destructive" });
+        } catch (error) {
+          if (cancelled) return;
+          logError("auth.oauth", "callback finalizer failed", {
+            request_id: traceId, origin: window.location.origin, status: "error", error: supaErr(error),
+          }, traceId);
+          toast({ title: "Sign in failed", description: readableError(error), variant: "destructive" });
+        } finally {
+          if (!cancelled) {
+            cleanAuthCallbackUrl(window.location.pathname);
+            setOauthProcessing(false);
+          }
         }
       };
 
@@ -176,10 +118,9 @@ const Auth = () => {
 
       return () => {
         cancelled = true;
-        subscription.unsubscribe();
       };
     }
-  }, [toast]);
+  }, [navigate, toast]);
 
   // Native deep link OAuth callback (Android/iOS): the system browser redirects
   // back into the app via the "duospace://auth" custom URL scheme. Capacitor's
@@ -204,14 +145,16 @@ const Auth = () => {
       sub = await App.addListener("appUrlOpen", async ({ url }) => {
         const traceId = newTraceId("oauth_cb_native");
         try {
-          const parsed = new URL(url);
-          const code = parsed.searchParams.get("code");
-          const errorDesc = parsed.searchParams.get("error_description") || parsed.searchParams.get("error");
-          // Some providers return tokens in the fragment instead of the query string.
-          const hashParams = new URLSearchParams(parsed.hash.replace(/^#/, ""));
+          const parsed = parseAuthCallbackUrl(url);
+          const code = parsed.get("code");
+          const errorDesc = parsed.get("error_description") || parsed.get("error");
+          const isPasswordRecovery = parsed.get("type") === "recovery" || url.includes("reset-password");
 
           logInfo("auth.oauth", "native callback received", {
-            request_id: traceId, has_code: Boolean(code), has_error: Boolean(errorDesc),
+            request_id: traceId,
+            has_code: Boolean(code),
+            has_access_token: Boolean(parsed.get("access_token")),
+            has_error: Boolean(errorDesc),
           }, traceId);
 
           if (errorDesc) {
@@ -221,45 +164,25 @@ const Auth = () => {
           }
 
           setOauthProcessing(true);
-
-          if (code) {
-            const { data, error } = await supabase.auth.exchangeCodeForSession(code);
-            if (!cancelled) {
-              if (data.session) {
-                logInfo("auth.oauth", "native session established via code exchange", {
-                  request_id: traceId, status: "ok", user_id: data.session.user.id,
-                }, traceId);
-              } else if (error) {
-                logError("auth.oauth", "native code exchange failed", {
-                  request_id: traceId, error: supaErr(error),
-                }, traceId);
-                toast({ title: "Sign in failed", description: readableError(error), variant: "destructive" });
-              }
-              setOauthProcessing(false);
+          const result = await completeAuthCallback(url);
+          if (!cancelled) {
+            if (result.session) {
+              logInfo("auth.oauth", "native session established via callback finalizer", {
+                request_id: traceId, status: "ok", user_id: result.session.user.id,
+                callback_type: result.type,
+              }, traceId);
+              navigate(isPasswordRecovery ? "/reset-password" : getPostAuthPath(url), { replace: true });
+            } else {
+              toast({ title: "Sign in failed", description: "No session was returned. Please try again.", variant: "destructive" });
             }
-            await closeInAppBrowser();
-            return;
-          }
-
-          const accessToken = hashParams.get("access_token");
-          const refreshToken = hashParams.get("refresh_token");
-          if (accessToken && refreshToken) {
-            const { error } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
-            if (!cancelled) {
-              if (error) {
-                logError("auth.oauth", "native setSession failed", { request_id: traceId, error: supaErr(error) }, traceId);
-                toast({ title: "Sign in failed", description: readableError(error), variant: "destructive" });
-              } else {
-                logInfo("auth.oauth", "native session established via tokens", { request_id: traceId, status: "ok" }, traceId);
-              }
-              setOauthProcessing(false);
-            }
-          } else if (!cancelled) {
             setOauthProcessing(false);
           }
         } catch (err) {
           logError("auth.oauth", "native callback parse/exchange threw", { request_id: traceId, err: supaErr(err) }, traceId);
-          if (!cancelled) setOauthProcessing(false);
+          if (!cancelled) {
+            toast({ title: "Sign in failed", description: readableError(err), variant: "destructive" });
+            setOauthProcessing(false);
+          }
         }
         await closeInAppBrowser();
       });
@@ -271,7 +194,7 @@ const Auth = () => {
       cancelled = true;
       sub?.remove();
     };
-  }, [toast]);
+  }, [navigate, toast]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -316,13 +239,14 @@ const Auth = () => {
     }
     const traceId = newTraceId("signup");
     const emailHash = await hashEmail(email);
-    const redirectUri = getAuthRedirectUri();
+    let redirectUri = "";
     setLoading(true);
-    logInfo("auth.signup", "token exchange start", {
-      request_id: traceId, origin: window.location.origin,
-      redirect_uri: redirectUri, email_hash: emailHash,
-    }, traceId);
     try {
+      redirectUri = getAuthRedirectUri();
+      logInfo("auth.signup", "token exchange start", {
+        request_id: traceId, origin: window.location.origin,
+        redirect_uri: redirectUri, email_hash: emailHash,
+      }, traceId);
       const { data, error } = await supabase.auth.signUp({
         email: email.trim(),
         password,
@@ -375,15 +299,19 @@ const Auth = () => {
     if (!forgotEmail.trim()) return;
     const traceId = newTraceId("pwreset");
     const emailHash = await hashEmail(forgotEmail);
-    const redirectTo = isNativePlatform()
-      ? "duospace://auth/reset-password"
-      : `${window.location.origin}/reset-password`;
+    let redirectTo = "";
     setForgotLoading(true);
-    logInfo("auth.pwreset", "request start", {
-      request_id: traceId, origin: window.location.origin,
-      redirect_uri: redirectTo, email_hash: emailHash,
-    }, traceId);
     try {
+      if (!isNativePlatform() && (window.location.origin === "null" || window.location.origin === "http://localhost:3000")) {
+        throw new Error("This reset-link origin is invalid. Open DuoSpace from the Lovable preview/published URL and try again.");
+      }
+      redirectTo = isNativePlatform()
+        ? "duospace://auth/reset-password"
+        : `${window.location.origin}/reset-password`;
+      logInfo("auth.pwreset", "request start", {
+        request_id: traceId, origin: window.location.origin,
+        redirect_uri: redirectTo, email_hash: emailHash,
+      }, traceId);
       const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail.trim(), { redirectTo });
       if (error) {
         logError("auth.pwreset", "request failed", {
@@ -419,12 +347,12 @@ const Auth = () => {
   // the flow with Supabase's own, correctly-routed `signInWithOAuth`.
   const startOAuth = async (provider: "google", extraQueryParams?: Record<string, string>) => {
     const traceId = newTraceId(`oauth_${provider}`);
-    const redirectUri = getAuthRedirectUri();
-    logInfo("auth.oauth", "initiate", {
-      request_id: traceId, provider,
-      origin: window.location.origin, redirect_uri: redirectUri,
-    }, traceId);
     try {
+      const redirectUri = getAuthRedirectUri();
+      logInfo("auth.oauth", "initiate", {
+        request_id: traceId, provider,
+        origin: window.location.origin, redirect_uri: redirectUri,
+      }, traceId);
       // Native (Capacitor): don't let supabase-js redirect the in-app
       // WebView (that's what produced the earlier "redirect_uri is not
       // allowed" / dead-end 404 on native, since the WebView origin is
@@ -465,7 +393,7 @@ const Auth = () => {
       }, traceId);
     } catch (err: unknown) {
       logError("auth.oauth", "initiate failed", {
-        request_id: traceId, provider, redirect_uri: redirectUri,
+        request_id: traceId, provider,
         status: "error", err: supaErr(err),
       }, traceId);
       const label = "Google";
@@ -479,6 +407,7 @@ const Auth = () => {
   };
 
   const handleGoogleLogin = async () => {
+    if (googleLoading) return;
     setGoogleLoading(true);
     try {
       await startOAuth("google", { prompt: "select_account" });
@@ -590,7 +519,7 @@ const Auth = () => {
         <div className="space-y-2">
           <Button
             onClick={handleGoogleLogin}
-            disabled={googleLoading}
+            disabled={googleLoading || oauthProcessing}
             variant="outline"
             className="w-full h-12 rounded-xl gap-3 text-sm font-medium"
           >

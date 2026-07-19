@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { User } from "@supabase/supabase-js";
 import { logError, logInfo, logWarn } from "@/lib/telemetry";
+import { notifyCurrentDeviceSignIn } from "@/lib/signinAlert";
 
 // FIX AUDIT #4: Race condition fixed — use only onAuthStateChange; drop redundant
 // getSession call. onAuthStateChange always fires INITIAL_SESSION synchronously
@@ -39,6 +40,11 @@ export const useAuth = () => {
           break;
 
         case "SIGNED_IN":
+          void notifyCurrentDeviceSignIn();
+          setUser(session?.user ?? null);
+          setRefreshFailed(false);
+          break;
+
         case "TOKEN_REFRESHED":
         case "USER_UPDATED":
           setUser(session?.user ?? null);

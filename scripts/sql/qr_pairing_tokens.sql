@@ -12,25 +12,31 @@
 
 create table if not exists public.qr_pairing_tokens (
   id            uuid primary key default gen_random_uuid(),
-  -- For device_pairing tokens: the already-authenticated user granting sign-in
-  --   to a second device. Required.
+  -- For anon_signup tokens this is null until the issuing device creates an
+  -- account. For device_pairing/signup_invite this is the issuing user.
   -- For signup_invite tokens: the user who *issued* the invite (inviter).
   --   Required — signup_invite QRs are always minted by an authed user.
-  user_id       uuid not null references auth.users(id) on delete cascade,
+  user_id       uuid references auth.users(id) on delete cascade,
   token_hash    text not null unique,
   -- 'device_pairing' → redeem mints a session for user_id (existing behavior).
   -- 'signup_invite'  → redeem returns { kind:'signup_invite', inviter_id }
   --                   and the scanning device must run the normal signup flow.
+  -- 'anon_signup'    → unauthenticated issuer can show a QR before signup.
   token_type    text not null default 'device_pairing'
-                check (token_type in ('device_pairing','signup_invite')),
+                check (token_type in ('device_pairing','signup_invite','anon_signup')),
   created_at    timestamptz not null default now(),
   expires_at    timestamptz not null,
   redeemed_at   timestamptz,
   redeemed_ip   text,
   redeemed_ua   text,
   issuer_ip     text,
-  issuer_ua     text
+  issuer_ua     text,
+  redeemed_by_user_id uuid references auth.users(id) on delete set null,
+  pending_partner_for uuid references auth.users(id) on delete set null
 );
+
+alter table public.qr_pairing_tokens
+  alter column user_id drop not null;
 
 -- Idempotent add for existing deployments that predate token_type.
 alter table public.qr_pairing_tokens
@@ -41,14 +47,20 @@ do $$ begin
   ) then
     alter table public.qr_pairing_tokens
       add constraint qr_pairing_tokens_token_type_check
-      check (token_type in ('device_pairing','signup_invite'));
+      check (token_type in ('device_pairing','signup_invite','anon_signup'));
   end if;
 end $$;
+alter table public.qr_pairing_tokens
+  add column if not exists redeemed_by_user_id uuid references auth.users(id) on delete set null,
+  add column if not exists pending_partner_for uuid references auth.users(id) on delete set null;
 
 create index if not exists qr_pairing_tokens_user_idx
   on public.qr_pairing_tokens (user_id, created_at desc);
 create index if not exists qr_pairing_tokens_expiry_idx
   on public.qr_pairing_tokens (expires_at);
+create index if not exists qr_pairing_tokens_pending_partner_idx
+  on public.qr_pairing_tokens (pending_partner_for)
+  where pending_partner_for is not null;
 
 -- Data API access. Only edge functions running with the service role touch
 -- this table; clients must never read or write it directly.

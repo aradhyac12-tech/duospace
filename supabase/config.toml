@@ -1,4 +1,4 @@
-project_id = "povhwwcswvfihmcdqgyv"
+project_id = "jzlpelxwzjjpddqcrtpu"
 
 [functions.qr-anon-issue]
 verify_jwt = false

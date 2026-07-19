@@ -148,7 +148,7 @@ export async function invokeEdgeFunction<T = unknown>(
       }
       if (isNetworkError(e)) {
         throw new EdgeFunctionError(
-          "Unable to contact the server. Please check your internet connection or try again later.",
+          `The "${name}" server function isn't reachable. It may not be deployed to this Supabase project yet, or CORS is blocking this app origin. Deploy the function and allow this preview/published URL, then try again.`,
           "network",
           requestId,
         );

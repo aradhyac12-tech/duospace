@@ -119,6 +119,23 @@
     --shadow-glass: 0 8px 32px -8px hsl(0 0% 0% / 0.45), 0 1px 0 0 hsl(0 0% 100% / 0.06) inset;
     --shadow-soft: 0 2px 8px -2px hsl(0 0% 0% / 0.4);
     --shadow-pop: 0 20px 40px -12px hsl(0 0% 0% / 0.6);
+
+    /* Text density preset vars — see src/lib/textDensity.ts. Defaults here
+       match the "classic" preset so the app looks right before JS boots. */
+    --text-scale: 1;
+    --leading-boost: 1;
+    --tracking: 0em;
+  }
+}
+
+@layer base {
+  html {
+    /* % (not px) so this still respects the user's own browser/OS text-size
+       accessibility setting as the base, multiplied by the chosen preset.
+       Because font-size, padding, gap, and most icon sizing in this app's
+       Tailwind classes are all rem-based, scaling the root scales all of
+       them together — no per-component changes needed. */
+    font-size: calc(100% * var(--text-scale));
   }
 }
 
@@ -130,10 +147,12 @@
   body {
     @apply bg-background text-foreground antialiased;
     font-family: var(--font-body);
+    line-height: calc(1.5 * var(--leading-boost));
+    letter-spacing: var(--tracking);
   }
   h1, h2, h3, h4, h5, h6 {
     font-family: var(--font-heading);
-    letter-spacing: -0.01em;
+    letter-spacing: calc(-0.01em + var(--tracking));
   }
 }
 

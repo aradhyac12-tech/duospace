@@ -39,9 +39,6 @@ export function getAuthRedirectUri(): string {
   if (Capacitor.isNativePlatform()) {
     return NATIVE_OAUTH_REDIRECT_URI;
   }
-  if (window.location.origin === "null" || window.location.origin === "http://localhost:3000") {
-    throw new Error("This OAuth redirect origin is invalid. Open DuoSpace from the Lovable preview/published URL and make sure that URL is allow-listed in Auth redirect URLs.");
-  }
   // Point at the dedicated callback route (registered in App.tsx) rather
   // than the bare origin. Functionally the Auth page already parses the
   // OAuth hash/query params regardless of which path it lands on, but an

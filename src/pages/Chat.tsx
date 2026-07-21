@@ -1323,11 +1323,7 @@ const Chat = () => {
         aria-relevant="additions"
         aria-label="Conversation messages"
         className="flex-1 overflow-y-auto px-3 py-3 min-h-0"
-        style={chatWallpaper ? {
-          backgroundImage: chatWallpaper.startsWith("url(") ? chatWallpaper : undefined,
-          background: chatWallpaper.startsWith("linear") ? chatWallpaper : undefined,
-          backgroundSize:"cover", backgroundPosition:"center",
-        } : undefined}>
+        style={chatWallpaper ? { background: chatWallpaper } : undefined}>
         {hasMoreMessages && (
           <div className="flex justify-center mb-3">
             <button onClick={loadMoreMessages} disabled={loadingMore}

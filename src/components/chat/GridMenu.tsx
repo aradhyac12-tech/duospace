@@ -1,7 +1,7 @@
 import React from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useNavigate } from "react-router-dom";
-import { Image, Phone, MapPin, Music, Heart, Settings, X, BookOpen, Feather, Clock, Sparkles } from "lucide-react";
+import { Image, MapPin, Music, Heart, X, BookOpen, Feather, Clock, Sparkles } from "lucide-react";
 import { hapticLight } from "@/lib/haptics";
 
 interface GridMenuProps {
@@ -39,12 +39,10 @@ export const HubButton = ({ onClick, isOpen }: HubButtonProps) => (
 
 const navItems = [
   { path: "/gallery", icon: Image, label: "Gallery" },
-  { path: "/calls", icon: Phone, label: "Calls" },
   { path: "/map", icon: MapPin, label: "Map" },
   { path: "/playlist", icon: Music, label: "Music" },
   { path: "/shayari", icon: BookOpen, label: "Shayari" },
   { path: "/us", icon: Heart, label: "Us" },
-  { path: "/settings", icon: Settings, label: "Settings" },
 ];
 
 const GridMenu = ({ onClose, onScheduledMessage, onLoveLetter }: GridMenuProps) => {

@@ -4,6 +4,7 @@
 // applies them by writing CSS variables to :root, the same way ThemeContext does.
 
 import storage from "@/lib/storage";
+import { deriveTokens, applyTokens, parseHslString, ColorMode } from "@/lib/themeEngine";
 
 export interface CustomTheme {
   id: string;
@@ -41,22 +42,33 @@ export const deleteCustomTheme = (id: string) => {
 
 export const getActiveCustomThemeId = (): string | null => storage.get(ACTIVE_KEY) || null;
 
-const ROOT_VARS = ["--primary", "--accent", "--ring", "--background", "--foreground"];
+const ALL_TOKEN_VARS = [
+  "--background", "--foreground", "--card", "--card-foreground",
+  "--popover", "--popover-foreground",
+  "--primary", "--primary-foreground", "--secondary", "--secondary-foreground",
+  "--muted", "--muted-foreground", "--accent", "--accent-foreground",
+  "--border", "--input", "--ring", "--destructive", "--destructive-foreground",
+];
 
 export const applyCustomTheme = (t: CustomTheme) => {
-  const root = document.documentElement;
-  root.style.setProperty("--primary", t.primary);
-  root.style.setProperty("--ring", t.primary);
-  root.style.setProperty("--accent", t.accent);
-  if (t.amoled) {
-    root.style.setProperty("--background", "0 0% 0%");
-    root.style.setProperty("--card", "0 0% 4%");
-  } else if (t.background) {
-    root.style.setProperty("--background", t.background);
-  }
-  if (t.foreground) root.style.setProperty("--foreground", t.foreground);
+  const mode: ColorMode = t.amoled ? "dark" : ((storage.get("duo-color-mode") as ColorMode) || "dark");
+  const identity = {
+    primary: parseHslString(t.primary),
+    accent: parseHslString(t.accent),
+  };
+  const tokens = deriveTokens(identity, mode);
 
-  // Optional gradient via body background
+  // Explicit per-theme overrides (legacy presets that hardcoded a specific
+  // background/foreground rather than deriving one) still win if present.
+  if (t.background) tokens["--background"] = t.background;
+  if (t.foreground) tokens["--foreground"] = t.foreground;
+  if (t.amoled) {
+    tokens["--background"] = "0 0% 0%";
+    tokens["--card"] = "0 0% 4%";
+  }
+
+  applyTokens(tokens);
+
   if (t.gradient) {
     document.body.style.setProperty(
       "background-image",
@@ -72,10 +84,20 @@ export const applyCustomTheme = (t: CustomTheme) => {
 
 export const clearCustomThemeOverride = () => {
   const root = document.documentElement;
-  ROOT_VARS.forEach(v => root.style.removeProperty(v));
+  ALL_TOKEN_VARS.forEach(v => root.style.removeProperty(v));
   document.body.style.removeProperty("background-image");
   document.body.style.removeProperty("background-attachment");
   storage.remove(ACTIVE_KEY);
+
+  // Removing the override falls back to whatever's in the :root {} CSS rule
+  // (generic defaults), not the user's actually-selected base theme — so
+  // explicitly re-derive and reapply that theme's tokens now.
+  import("@/contexts/ThemeContext").then(({ THEME_IDENTITIES }) => {
+    const savedTheme = storage.get("duo-theme") as keyof typeof THEME_IDENTITIES | null;
+    const savedMode = (storage.get("duo-color-mode") as ColorMode) || "dark";
+    const identity = (savedTheme && THEME_IDENTITIES[savedTheme]) || THEME_IDENTITIES.midnight;
+    applyTokens(deriveTokens(identity, savedMode));
+  });
 };
 
 export const restoreActiveCustomTheme = () => {

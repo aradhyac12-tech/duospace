@@ -32,21 +32,13 @@ const config: CapacitorConfig = {
     preferredContentMode: 'mobile',
     scheme: 'DuoSpace',
     backgroundColor: '#F5F0EB',
-    // Info.plist usage descriptions must be set in Xcode:
-    // NSCameraUsageDescription: "DuoSpace needs camera for photos and video calls"
-    // NSMicrophoneUsageDescription: "DuoSpace needs microphone for voice and video calls"
-    // NSPhotoLibraryUsageDescription: "DuoSpace needs access to save and share photos"
-    // NSFaceIDUsageDescription: "DuoSpace uses Face ID to keep your conversations private"
-    //
-    // OAuth deep link (must also be added manually — Capacitor does not
-    // generate this): add to ios/App/App/Info.plist
-    //   <key>CFBundleURLTypes</key>
-    //   <array><dict>
-    //     <key>CFBundleURLSchemes</key>
-    //     <array><string>duospace</string></array>
-    //   </dict></array>
-    // This is separate from `scheme` above (which only controls the
-    // webview's internal load scheme, not external deep links).
+    // OAuth deep link scheme: "duospace" (must match NATIVE_OAUTH_REDIRECT_URI
+    // in src/lib/auth-redirect.ts). This is separate from `scheme` above,
+    // which only controls the webview's internal load scheme. Capacitor has
+    // no config field for external URL scheme registration — it can only be
+    // set in native project files. Run `npm run cap:patch-permissions`
+    // after `cap add ios` / `cap sync` to add it automatically (also adds
+    // camera/mic/photo usage descriptions); see scripts/patch-native-permissions.mjs.
   },
   android: {
     backgroundColor: '#F5F0EB',
@@ -57,14 +49,10 @@ const config: CapacitorConfig = {
     // CAMERA, RECORD_AUDIO, READ_EXTERNAL_STORAGE, WRITE_EXTERNAL_STORAGE,
     // ACCESS_FINE_LOCATION, INTERNET, POST_NOTIFICATIONS (Android 13+)
     //
-    // OAuth deep link (must also be added manually to the launcher
-    // Activity in android/app/src/main/AndroidManifest.xml):
-    //   <intent-filter>
-    //     <action android:name="android.intent.action.VIEW" />
-    //     <category android:name="android.intent.category.DEFAULT" />
-    //     <category android:name="android.intent.category.BROWSABLE" />
-    //     <data android:scheme="duospace" android:host="auth" />
-    //   </intent-filter>
+    // OAuth deep link scheme "duospace" (must match NATIVE_OAUTH_REDIRECT_URI
+    // in src/lib/auth-redirect.ts): run `npm run cap:patch-permissions`
+    // after `cap add android` / `cap sync` to add the intent-filter to the
+    // launcher Activity automatically; see scripts/patch-native-permissions.mjs.
   },
 };
 

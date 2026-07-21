@@ -1,5 +1,5 @@
 import { useLocation, useNavigate } from "react-router-dom";
-import { MessageCircle, Image, Phone, Heart, Settings, Music, MapPin } from "lucide-react";
+import { MessageCircle, Phone, Settings } from "lucide-react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useState, useEffect, useRef } from "react";
@@ -9,11 +9,7 @@ import { routePreload } from "@/App";
 
 const tabs = [
   { path: "/chat", icon: MessageCircle, label: "Chat", badgeKey: "messages" },
-  { path: "/gallery", icon: Image, label: "Gallery" },
   { path: "/calls", icon: Phone, label: "Calls", badgeKey: "calls" },
-  { path: "/map", icon: MapPin, label: "Map" },
-  { path: "/playlist", icon: Music, label: "Music" },
-  { path: "/us", icon: Heart, label: "Us" },
 ];
 
 const HIDDEN_PAGES = ["/settings"];
@@ -174,7 +170,7 @@ const BottomNav = () => {
               transition={{ type: "spring", stiffness: 500, damping: 35 }} />
           )}
           <Settings className="relative z-10 h-5 w-5" strokeWidth={1.8} />
-          <span className="relative z-10 text-[10px] font-medium tracking-wide">More</span>
+          <span className="relative z-10 text-[10px] font-medium tracking-wide">Settings</span>
         </button>
       </div>
     </motion.nav>

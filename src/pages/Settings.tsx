@@ -9,7 +9,7 @@ import {
 import CodeSurpriseEditor from "@/components/CodeSurpriseEditor";
 import { useLocation, useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Input } from "@/components/ui/input";
@@ -37,19 +37,33 @@ import AddEmailPasswordDialog from "@/components/auth/AddEmailPasswordDialog";
 
 
 const presetWallpapers = [
-  { id:"w1", style:"linear-gradient(135deg, hsl(28,15%,90%) 0%, hsl(28,20%,82%) 100%)" },
-  { id:"w2", style:"linear-gradient(180deg, hsl(220,30%,15%) 0%, hsl(230,20%,8%) 100%)" },
-  { id:"w3", style:"linear-gradient(135deg, hsl(195,30%,88%) 0%, hsl(200,40%,75%) 100%)" },
-  { id:"w4", style:"linear-gradient(135deg, hsl(350,30%,90%) 0%, hsl(340,35%,80%) 100%)" },
-  { id:"w5", style:"linear-gradient(135deg, hsl(150,20%,88%) 0%, hsl(155,30%,75%) 100%)" },
-  { id:"w6", style:"linear-gradient(135deg, hsl(270,25%,90%) 0%, hsl(260,30%,80%) 100%)" },
-  { id:"w7", style:"linear-gradient(135deg, hsl(345,35%,15%) 0%, hsl(348,45%,25%) 100%)" },
-  { id:"w8", style:"linear-gradient(135deg, hsl(36,60%,88%) 0%, hsl(38,50%,75%) 100%)" },
-  { id:"w9", style:"linear-gradient(135deg, hsl(18,35%,85%) 0%, hsl(18,45%,72%) 100%)" },
+  { id: "w-minimal-light", name: "Minimal Light", category: "Minimal", style: `linear-gradient(180deg, hsl(30,15%,97%) 0%, hsl(30,10%,94%) 100%), url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%22180%22%20height%3D%22180%22%3E%3Cfilter%20id%3D%22n%22%3E%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%220.9%22%20numOctaves%3D%222%22%20stitchTiles%3D%22stitch%22/%3E%3CfeColorMatrix%20type%3D%22saturate%22%20values%3D%220%22/%3E%3C/filter%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20filter%3D%22url%28%2523n%29%22%20opacity%3D%220.05%22/%3E%3C/svg%3E")` },
+  { id: "w-minimal-dark", name: "Minimal Dark", category: "Minimal", style: `linear-gradient(180deg, hsl(230,15%,10%) 0%, hsl(230,12%,7%) 100%), url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%22180%22%20height%3D%22180%22%3E%3Cfilter%20id%3D%22n%22%3E%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%220.9%22%20numOctaves%3D%222%22%20stitchTiles%3D%22stitch%22/%3E%3CfeColorMatrix%20type%3D%22saturate%22%20values%3D%220%22/%3E%3C/filter%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20filter%3D%22url%28%2523n%29%22%20opacity%3D%220.08%22/%3E%3C/svg%3E")` },
+  { id: "w-sunset", name: "Sunset", category: "Soft Gradient", style: `linear-gradient(135deg, hsl(20,70%,90%) 0%, hsl(345,55%,85%) 100%)` },
+  { id: "w-horizon", name: "Horizon", category: "Soft Gradient", style: `linear-gradient(135deg, hsl(200,55%,88%) 0%, hsl(230,45%,80%) 100%)` },
+  { id: "w-mesh-light", name: "Mesh Bloom", category: "Mesh Gradient", style: `radial-gradient(at 15% 20%, hsl(340,70%,88%) 0%, transparent 55%), radial-gradient(at 85% 10%, hsl(220,65%,86%) 0%, transparent 55%), radial-gradient(at 50% 100%, hsl(160,55%,86%) 0%, transparent 55%), hsl(30,20%,97%)` },
+  { id: "w-mesh-dark", name: "Mesh Glow", category: "Mesh Gradient", style: `radial-gradient(at 20% 15%, hsl(265,60%,25%) 0%, transparent 55%), radial-gradient(at 85% 20%, hsl(200,55%,22%) 0%, transparent 55%), radial-gradient(at 50% 100%, hsl(320,50%,20%) 0%, transparent 55%), hsl(230,20%,8%)` },
+  { id: "w-aurora", name: "Aurora", category: "Aurora", style: `radial-gradient(at 10% 0%, hsl(160,80%,35%) 0%, transparent 45%), radial-gradient(at 90% 10%, hsl(260,80%,40%) 0%, transparent 45%), radial-gradient(at 50% 90%, hsl(200,80%,35%) 0%, transparent 50%), hsl(230,25%,6%)` },
+  { id: "w-grain-warm", name: "Warm Grain", category: "Noise", style: `linear-gradient(160deg, hsl(28,30%,92%) 0%, hsl(24,25%,86%) 100%), url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%22180%22%20height%3D%22180%22%3E%3Cfilter%20id%3D%22n%22%3E%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%220.9%22%20numOctaves%3D%222%22%20stitchTiles%3D%22stitch%22/%3E%3CfeColorMatrix%20type%3D%22saturate%22%20values%3D%220%22/%3E%3C/filter%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20filter%3D%22url%28%2523n%29%22%20opacity%3D%220.05%22/%3E%3C/svg%3E")` },
+  { id: "w-grain-dark", name: "Charcoal Grain", category: "Noise", style: `linear-gradient(160deg, hsl(0,0%,11%) 0%, hsl(0,0%,7%) 100%), url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%22180%22%20height%3D%22180%22%3E%3Cfilter%20id%3D%22n%22%3E%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%220.9%22%20numOctaves%3D%222%22%20stitchTiles%3D%22stitch%22/%3E%3CfeColorMatrix%20type%3D%22saturate%22%20values%3D%220%22/%3E%3C/filter%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20filter%3D%22url%28%2523n%29%22%20opacity%3D%220.08%22/%3E%3C/svg%3E")` },
+  { id: "w-paper", name: "Paper", category: "Paper", style: `linear-gradient(175deg, hsl(38,35%,95%) 0%, hsl(35,28%,90%) 100%), url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%22180%22%20height%3D%22180%22%3E%3Cfilter%20id%3D%22n%22%3E%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%220.75%22%20numOctaves%3D%223%22%20stitchTiles%3D%22stitch%22/%3E%3CfeColorMatrix%20type%3D%22saturate%22%20values%3D%220%22/%3E%3C/filter%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20filter%3D%22url%28%2523n%29%22%20opacity%3D%220.045%22/%3E%3C/svg%3E")` },
+  { id: "w-dots-light", name: "Dot Grid Light", category: "Minimal Shapes", style: `radial-gradient(circle, hsl(30,10%,75%) 1px, transparent 1.2px) 0 0/16px 16px, hsl(30,15%,97%)` },
+  { id: "w-dots-dark", name: "Dot Grid Dark", category: "Minimal Shapes", style: `radial-gradient(circle, hsl(220,10%,30%) 1px, transparent 1.2px) 0 0/16px 16px, hsl(230,15%,9%)` },
+  { id: "w-forest", name: "Forest Mist", category: "Nature", style: `linear-gradient(160deg, hsl(150,25%,90%) 0%, hsl(155,20%,78%) 100%)` },
+  { id: "w-ocean", name: "Ocean Depth", category: "Nature", style: `linear-gradient(160deg, hsl(195,45%,20%) 0%, hsl(210,50%,10%) 100%)` },
 ];
 
 const Settings = () => {
-  const { theme, setTheme, chatWallpaper, setChatWallpaper, appIcon, setAppIcon, appName, setAppName, appSettings, updateSetting } = useTheme();
+  const { theme, setTheme, colorMode, toggleColorMode, chatWallpaper, setChatWallpaper, appIcon, setAppIcon, appName, setAppName, appSettings, updateSetting } = useTheme();
+  const wallpapersByCategory = useMemo(() => {
+    const groups = new Map<string, typeof presetWallpapers>();
+    for (const w of presetWallpapers) {
+      const list = groups.get(w.category) ?? [];
+      list.push(w);
+      groups.set(w.category, list);
+    }
+    return [...groups.entries()];
+  }, []);
   const navigate  = useNavigate();
   const location  = useLocation();
   const { user }  = useAuth();
@@ -548,7 +562,15 @@ const Settings = () => {
             }} />
             {/* Theme */}
             <div className="bg-card rounded-2xl border border-border/60 p-4">
-              <p className="text-[11px] text-muted-foreground uppercase tracking-wider mb-3">Theme</p>
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-[11px] text-muted-foreground uppercase tracking-wider">Theme</p>
+                <button
+                  onClick={() => { hapticLight(); toggleColorMode(); }}
+                  className="h-7 px-3 rounded-full bg-muted text-[11px] font-medium flex items-center gap-1.5"
+                >
+                  {colorMode === "dark" ? "🌙 Dark" : "☀️ Light"}
+                </button>
+              </div>
               <div className="grid grid-cols-4 gap-2">
                 {THEMES.map((t) => (
                   <button key={t.id} onClick={() => { setTheme(t.id); hapticLight(); }}
@@ -571,11 +593,26 @@ const Settings = () => {
                 <p className="text-[11px] text-muted-foreground uppercase tracking-wider">Chat Wallpaper</p>
                 {chatWallpaper && <button onClick={() => setChatWallpaper(null)} className="text-[10px] text-destructive">Remove</button>}
               </div>
-              <div className="flex gap-2 overflow-x-auto pb-1">
-                {presetWallpapers.map(w => (
-                  <button key={w.id} onClick={() => { setChatWallpaper(w.style); hapticLight(); }}
-                    className={cn("h-14 w-14 rounded-xl shrink-0 border-2 transition-all",chatWallpaper===w.style?"border-foreground":"border-transparent")}
-                    style={{ background:w.style }} />
+              <div className="space-y-4">
+                {wallpapersByCategory.map(([category, list]) => (
+                  <div key={category}>
+                    <p className="text-[10px] text-muted-foreground mb-1.5">{category}</p>
+                    <div className="flex gap-2 overflow-x-auto pb-1">
+                      {list.map(w => (
+                        <button key={w.id} onClick={() => { setChatWallpaper(w.style); hapticLight(); }}
+                          title={w.name}
+                          className={cn("h-16 w-16 rounded-2xl shrink-0 border-2 transition-all relative overflow-hidden",
+                            chatWallpaper===w.style ? "border-foreground" : "border-transparent")}
+                          style={{ background: w.style }}>
+                          {chatWallpaper===w.style && (
+                            <span className="absolute inset-0 flex items-center justify-center bg-black/10">
+                              <Check className="h-4 w-4 text-white drop-shadow" />
+                            </span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 ))}
               </div>
             </div>

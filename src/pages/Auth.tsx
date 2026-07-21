@@ -302,9 +302,6 @@ const Auth = () => {
     let redirectTo = "";
     setForgotLoading(true);
     try {
-      if (!isNativePlatform() && (window.location.origin === "null" || window.location.origin === "http://localhost:3000")) {
-        throw new Error("This reset-link origin is invalid. Open DuoSpace from the Lovable preview/published URL and try again.");
-      }
       redirectTo = isNativePlatform()
         ? "duospace://auth/reset-password"
         : `${window.location.origin}/reset-password`;

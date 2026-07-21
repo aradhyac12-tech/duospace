@@ -49,11 +49,13 @@ const Onboarding = ({ onComplete }: OnboardingProps) => {
     return false;
   };
 
-  const handleNext = async () => {
+  const handleNext = async (phoneOverride?: string) => {
     if (step < totalSteps - 1) {
       setStep(step + 1);
       return;
     }
+
+    const phoneToSave = phoneOverride !== undefined ? phoneOverride : phone;
 
     setSaving(true);
     const { error } = await supabase
@@ -61,7 +63,7 @@ const Onboarding = ({ onComplete }: OnboardingProps) => {
       .update({
         display_name: displayName.trim(),
         gender,
-        phone_number: phone.trim() || null,
+        phone_number: phoneToSave.trim() || null,
       })
       .eq("user_id", user!.id);
 
@@ -213,13 +215,23 @@ const Onboarding = ({ onComplete }: OnboardingProps) => {
         </AnimatePresence>
 
         <Button
-          onClick={handleNext}
+          onClick={() => handleNext()}
           disabled={!canProceed() || saving}
           className="w-full h-12 rounded-xl bg-foreground text-background hover:bg-foreground/90 text-sm font-medium gap-2"
         >
           {step === totalSteps - 1 ? (saving ? "Saving..." : "Let's go!") : "Continue"}
           {step < totalSteps - 1 && <ChevronRight className="h-4 w-4" />}
         </Button>
+
+        {step === 2 && (
+          <button
+            onClick={() => handleNext("")}
+            disabled={saving}
+            className="w-full text-center text-xs text-muted-foreground underline underline-offset-2"
+          >
+            Skip for now
+          </button>
+        )}
 
         {step > 0 && (
           <button onClick={() => setStep(step - 1)} className="w-full text-center text-xs text-muted-foreground">

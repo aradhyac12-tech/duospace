@@ -18,6 +18,7 @@ import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { useLaunchPermissions } from "@/hooks/useLaunchPermissions";
 import storage from "@/lib/storage";
 import { hasAuthCallback, parseAuthCallbackUrl } from "@/lib/auth-callback";
+import SplashScreen from "@/components/SplashScreen";
 
 // Lazy chunks with preload handles so we can warm them on app mount / nav hover.
 const ChatImport = () => import("@/pages/Chat");
@@ -153,6 +154,14 @@ const AuthRoute = () => {
 
 const App = () => {
   useLaunchPermissions();
+  // Cinematic splash plays once per cold boot. sessionStorage (not a React
+  // state default) so a page reload mid-session doesn't replay it, but a
+  // genuinely fresh app launch (new session) always does.
+  const [showSplash, setShowSplash] = useState(() => !sessionStorage.getItem("duo-splash-shown"));
+  const handleSplashDone = () => {
+    sessionStorage.setItem("duo-splash-shown", "1");
+    setShowSplash(false);
+  };
   return (
   <QueryClientProvider client={queryClient}>
     <ThemeProvider>
@@ -160,6 +169,7 @@ const App = () => {
         <Toaster />
         <Sonner />
         <PeekGuard />
+        {showSplash && <SplashScreen onComplete={handleSplashDone} />}
         <BrowserRouter>
           <Suspense fallback={<PageFallback />}>
           <Routes>

@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { supabase } from "@/integrations/supabase/client";
-import { getAuthRedirectUri, isNativePlatform } from "@/lib/auth-redirect";
+import { buildAuthRedirectUri, getAuthPlatform, isNativePlatform } from "@/lib/auth-redirect";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -142,43 +142,65 @@ const Auth = () => {
 
     const setup = async () => {
       const { App } = await import("@capacitor/app");
+      logInfo("auth.deeplink", "appUrlOpen listener registered", {
+        platform: getAuthPlatform(),
+      });
       sub = await App.addListener("appUrlOpen", async ({ url }) => {
         const traceId = newTraceId("oauth_cb_native");
+        const receivedAt = Date.now();
         try {
           const parsed = parseAuthCallbackUrl(url);
           const code = parsed.get("code");
           const errorDesc = parsed.get("error_description") || parsed.get("error");
           const isPasswordRecovery = parsed.get("type") === "recovery" || url.includes("reset-password");
 
-          logInfo("auth.oauth", "native callback received", {
+          logInfo("auth.deeplink", "appUrlOpen fired", {
             request_id: traceId,
+            received_at: receivedAt,
+            platform: getAuthPlatform(),
+            raw_scheme: parsed.url.protocol.replace(":", ""),
+            raw_host: parsed.url.host,
+            raw_pathname: parsed.url.pathname,
             has_code: Boolean(code),
             has_access_token: Boolean(parsed.get("access_token")),
+            has_refresh_token: Boolean(parsed.get("refresh_token")),
+            callback_type: parsed.get("type"),
+            is_password_recovery: isPasswordRecovery,
             has_error: Boolean(errorDesc),
           }, traceId);
 
           if (errorDesc) {
+            logError("auth.deeplink", "provider returned error in deep link", {
+              request_id: traceId, error: errorDesc,
+            }, traceId);
             toast({ title: "Sign in failed", description: errorDesc, variant: "destructive" });
             await closeInAppBrowser();
             return;
           }
 
           setOauthProcessing(true);
-          const result = await completeAuthCallback(url);
+          const t0 = performance.now();
+          const result = await completeAuthCallback(url, traceId);
+          const duration_ms = Math.round(performance.now() - t0);
           if (!cancelled) {
             if (result.session) {
-              logInfo("auth.oauth", "native session established via callback finalizer", {
-                request_id: traceId, status: "ok", user_id: result.session.user.id,
+              logInfo("auth.deeplink", "native session established", {
+                request_id: traceId, status: "ok", duration_ms,
+                user_id: result.session.user.id,
                 callback_type: result.type,
+                expires_at: result.session.expires_at,
               }, traceId);
               navigate(isPasswordRecovery ? "/reset-password" : getPostAuthPath(url), { replace: true });
             } else {
+              logError("auth.deeplink", "callback finalized with no session", {
+                request_id: traceId, duration_ms,
+              }, traceId);
               toast({ title: "Sign in failed", description: "No session was returned. Please try again.", variant: "destructive" });
             }
             setOauthProcessing(false);
           }
         } catch (err) {
-          logError("auth.oauth", "native callback parse/exchange threw", { request_id: traceId, err: supaErr(err) }, traceId);
+          logError("auth.deeplink", "appUrlOpen handler threw", { request_id: traceId, err: supaErr(err) }, traceId);
           if (!cancelled) {
             toast({ title: "Sign in failed", description: readableError(err), variant: "destructive" });
             setOauthProcessing(false);
@@ -242,9 +264,10 @@ const Auth = () => {
     let redirectUri = "";
     setLoading(true);
     try {
-      redirectUri = getAuthRedirectUri();
+      redirectUri = buildAuthRedirectUri("email_confirm");
       logInfo("auth.signup", "token exchange start", {
         request_id: traceId, origin: window.location.origin,
+        platform: getAuthPlatform(),
         redirect_uri: redirectUri, email_hash: emailHash,
       }, traceId);
       const { data, error } = await supabase.auth.signUp({
@@ -302,11 +325,10 @@ const Auth = () => {
     let redirectTo = "";
     setForgotLoading(true);
     try {
-      redirectTo = isNativePlatform()
-        ? "duospace://auth/reset-password"
-        : `${window.location.origin}/reset-password`;
+      redirectTo = buildAuthRedirectUri("password_reset");
       logInfo("auth.pwreset", "request start", {
         request_id: traceId, origin: window.location.origin,
+        platform: getAuthPlatform(),
         redirect_uri: redirectTo, email_hash: emailHash,
       }, traceId);
       const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail.trim(), { redirectTo });
@@ -345,9 +367,10 @@ const Auth = () => {
   const startOAuth = async (provider: "google", extraQueryParams?: Record<string, string>) => {
     const traceId = newTraceId(`oauth_${provider}`);
     try {
-      const redirectUri = getAuthRedirectUri();
+      const redirectUri = buildAuthRedirectUri("oauth");
       logInfo("auth.oauth", "initiate", {
         request_id: traceId, provider,
+        platform: getAuthPlatform(),
         origin: window.location.origin, redirect_uri: redirectUri,
       }, traceId);
       // Native (Capacitor): don't let supabase-js redirect the in-app

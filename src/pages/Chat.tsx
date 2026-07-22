@@ -515,10 +515,15 @@ const Chat = () => {
 
   useEffect(() => {
     if (!user || !partnerId) return;
+    // FIX: Wait until E2E keys (mine + partner's) are ready before decrypting,
+    // otherwise every historical message renders as "[🔒 Encrypted]" and gets
+    // cached that way in state. Re-runs when e2eReady flips true so the
+    // conversation appears the moment key exchange completes.
+    if (!e2eReady) return;
     markedReadRef.current = new Set();
     fetchMessages();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, partnerId]);
+  }, [user, partnerId, e2eReady]);
 
   // FIX: load more passes the oldest created_at (not ID) — avoids stale messages dependency
   const loadMoreMessages = async () => {

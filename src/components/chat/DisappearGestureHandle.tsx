@@ -1,124 +1,190 @@
-import { useRef, useState, useCallback } from "react";
+import { useRef, useState, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Timer } from "lucide-react";
 import { hapticLight, hapticMedium } from "@/lib/haptics";
 
-export interface DisappearStep { label: string; value: number } // value in ms; 0 = Off
+export interface DisappearStep { label: string; value: number }
 
 interface Props {
-  steps: DisappearStep[]; // ordered shortest -> longest (Off is added internally)
+  /** Retained for API compat; the current duration surfaces via `currentMs`. */
+  steps: DisappearStep[];
   active: boolean;
   currentMs: number;
-  onCommit: (ms: number) => void; // 0 = turn off
+  /** Called with 0 to turn OFF, or the current `currentMs` to turn ON. */
+  onCommit: (ms: number) => void;
+  /** Open the timer picker sheet (tap on the pill while active). */
+  onOpenPicker?: () => void;
 }
 
-const ENGAGE_PX = 18;   // upward drag distance before the scale engages
-const PX_PER_STEP = 38; // drag distance per scale step once engaged
-
 /**
- * Swipe up + hold, drag to pick a duration, release to commit — modeled on
- * Instagram's Vanish Mode gesture (swipe up from near the input to turn on,
- * same swipe to turn off; dark overlay signals the mode is live) crossed
- * with Signal's multi-step duration picker (Off through a real time scale,
- * rather than a binary on/off).
+ * Instagram-style Vanish Mode gesture.
+ *
+ * Grab the pill at the bottom of the composer and *pull up*. As you drag, the
+ * whole chat dims — the further you pull, the darker it gets and the more the
+ * pill locks in. Release past the threshold to toggle vanish mode; release
+ * below to snap back with no change. Tapping the pill while active opens the
+ * duration picker (Instagram exposes the timer separately from the gesture).
+ *
+ * All animation runs on a single Framer `motion.div` with GPU transforms — no
+ * per-move React state — so the drag is buttery on low-end phones.
  */
-const DisappearGestureHandle = ({ steps, active, currentMs, onCommit }: Props) => {
-  const fullScale = [{ label: "Off", value: 0 }, ...steps];
-  const [dragging, setDragging] = useState(false);
-  const [engaged, setEngaged] = useState(false);
-  const [stepIndex, setStepIndex] = useState(0);
-  const startY = useRef(0);
-  const pointerId = useRef<number | null>(null);
+const PULL_THRESHOLD = 56;   // px of upward pull that commits the toggle
+const MAX_PULL       = 96;   // clamp so overshoot doesn't feel like a rubber band snap
+const ENGAGE_PX      = 6;    // filter accidental taps
 
-  const currentStepIndex = () => {
-    const i = fullScale.findIndex(s => s.value === currentMs);
-    return i === -1 ? 0 : i;
-  };
+const DisappearGestureHandle = ({ active, currentMs, onCommit, onOpenPicker }: Props) => {
+  const [pull, setPull] = useState(0);          // 0 … MAX_PULL — drives visuals
+  const dragging        = useRef(false);
+  const startY          = useRef(0);
+  const engaged         = useRef(false);
+  const committed       = useRef(false);
+
+  const progress = Math.min(pull / PULL_THRESHOLD, 1);
+  const willCommit = pull >= PULL_THRESHOLD;
+
+  const reset = useCallback(() => {
+    dragging.current = false;
+    engaged.current = false;
+    committed.current = false;
+    startY.current = 0;
+    setPull(0);
+  }, []);
 
   const onPointerDown = useCallback((e: React.PointerEvent) => {
+    // Ignore multi-touch and non-primary buttons.
+    if (e.button && e.button !== 0) return;
+    dragging.current = true;
+    engaged.current = false;
+    committed.current = false;
     startY.current = e.clientY;
-    pointerId.current = e.pointerId;
-    setDragging(true);
-    setEngaged(false);
-    setStepIndex(active ? currentStepIndex() : 0);
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
-  }, [active, currentMs]);
+  }, []);
 
   const onPointerMove = useCallback((e: React.PointerEvent) => {
-    if (!dragging) return;
-    const deltaY = startY.current - e.clientY; // positive = dragged up
-    if (!engaged && deltaY > ENGAGE_PX) {
-      setEngaged(true);
-      hapticLight();
-    }
-    if (deltaY > ENGAGE_PX) {
-      // Already-active mode: any engaged swipe just means "turn off" (mirrors
-      // Instagram's re-swipe-to-disable) — no need to browse the scale.
-      if (active) return;
-      const idx = Math.min(fullScale.length - 1, Math.floor((deltaY - ENGAGE_PX) / PX_PER_STEP));
-      if (idx !== stepIndex) hapticLight();
-      setStepIndex(idx);
-    }
-  }, [dragging, engaged, active, stepIndex, fullScale.length]);
+    if (!dragging.current) return;
+    const dy = startY.current - e.clientY;
+    if (dy < ENGAGE_PX) { if (pull !== 0) setPull(0); return; }
+    if (!engaged.current) { engaged.current = true; hapticLight(); }
+    const next = Math.min(MAX_PULL, dy - ENGAGE_PX);
+    const crossedNow = next >= PULL_THRESHOLD;
+    const crossedBefore = pull >= PULL_THRESHOLD;
+    if (crossedNow && !crossedBefore) hapticMedium();
+    setPull(next);
+  }, [pull]);
 
   const finish = useCallback(() => {
-    if (!dragging) return;
-    setDragging(false);
-    if (engaged) {
+    if (!dragging.current) return;
+    const commit = engaged.current && pull >= PULL_THRESHOLD && !committed.current;
+    if (commit) {
+      committed.current = true;
       hapticMedium();
-      if (active) {
-        onCommit(0); // any engaged swipe while already active = turn off
-      } else {
-        onCommit(fullScale[stepIndex].value);
-      }
+      onCommit(active ? 0 : currentMs);
     }
-    setEngaged(false);
-  }, [dragging, engaged, active, stepIndex, fullScale, onCommit]);
+    reset();
+  }, [pull, active, currentMs, onCommit, reset]);
+
+  // Safety: if the pointer stream is interrupted (e.g. context menu, native
+  // gesture), always snap back.
+  useEffect(() => {
+    const cancel = () => reset();
+    window.addEventListener("pointercancel", cancel);
+    window.addEventListener("blur", cancel);
+    return () => {
+      window.removeEventListener("pointercancel", cancel);
+      window.removeEventListener("blur", cancel);
+    };
+  }, [reset]);
+
+  const onPillTap = () => {
+    // Only treat as tap if there was no engaged drag.
+    if (engaged.current) return;
+    if (active && onOpenPicker) onOpenPicker();
+  };
 
   return (
-    <div className="relative">
+    <>
+      {/* Full-viewport dim overlay driven by the drag. Instagram darkens the
+          whole screen as vanish mode engages — we do the same with a purely
+          opacity-driven layer that sits above the chat but below the composer. */}
       <AnimatePresence>
-        {engaged && !active && (
+        {(pull > 0 || active) && (
           <motion.div
-            initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }}
-            className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-card border border-border rounded-2xl shadow-xl p-1.5 flex flex-col-reverse gap-0.5 z-30"
-          >
-            {fullScale.map((s, i) => (
-              <div key={s.label}
-                className={`px-4 py-1.5 rounded-xl text-xs text-center transition-all ${
-                  i === stepIndex ? "bg-primary text-primary-foreground font-semibold scale-105" : "text-muted-foreground"
-                }`}>
-                {s.label}
-              </div>
-            ))}
-          </motion.div>
-        )}
-        {engaged && active && (
-          <motion.div
-            initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }}
-            className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-card border border-border rounded-2xl shadow-xl px-4 py-2 z-30"
-          >
-            <span className="text-xs font-medium text-muted-foreground">Release to turn off</span>
-          </motion.div>
+            initial={{ opacity: 0 }}
+            animate={{ opacity: active ? 0.55 : progress * 0.6 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15, ease: "easeOut" }}
+            className="pointer-events-none fixed inset-0 z-30 bg-black"
+            aria-hidden="true"
+          />
         )}
       </AnimatePresence>
 
-      <div
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={finish}
-        onPointerCancel={finish}
-        style={{ touchAction: "none" }}
-        className="flex items-center justify-center py-1 cursor-grab active:cursor-grabbing select-none"
-        aria-label="Swipe up and hold to set disappearing messages"
-        role="button"
-      >
-        <div className={`h-1 w-9 rounded-full transition-colors ${
-          engaged ? "bg-primary" : active ? "bg-primary/50" : "bg-muted-foreground/25"
-        }`} />
-        {active && !engaged && <Timer className="h-3 w-3 text-primary/70 ml-1.5" />}
+      {/* Gesture pill */}
+      <div className="relative flex items-center justify-center py-1 select-none z-40">
+        <motion.button
+          type="button"
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={finish}
+          onClick={onPillTap}
+          aria-label={active ? "Vanish mode on — pull up to turn off, tap to change timer" : "Pull up to turn on vanish mode"}
+          animate={{ y: -pull * 0.35, scale: 1 + progress * 0.15 }}
+          transition={ dragging.current
+            ? { type: "tween", duration: 0 }              // 1:1 with the finger while dragging
+            : { type: "spring", stiffness: 520, damping: 32 } // snappy release
+          }
+          style={{ touchAction: "none" }}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full transition-colors ${
+            active || willCommit
+              ? "bg-primary/15"
+              : "bg-transparent"
+          }`}
+        >
+          <motion.span
+            animate={{
+              width: willCommit || active ? 28 : 36,
+              backgroundColor: willCommit || active
+                ? "hsl(var(--primary))"
+                : "hsl(var(--muted-foreground) / 0.35)",
+            }}
+            transition={{ duration: 0.15 }}
+            className="h-1 rounded-full"
+          />
+          {active && (
+            <span className="flex items-center gap-1 text-[10px] font-medium text-primary">
+              <Timer className="h-3 w-3" />
+              Vanish on
+            </span>
+          )}
+        </motion.button>
+
+        {/* Hint text while dragging */}
+        <AnimatePresence>
+          {pull > 0 && !active && (
+            <motion.span
+              key="hint-on"
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 6 }}
+              className="pointer-events-none absolute -top-6 text-[10px] font-medium text-white/90"
+            >
+              {willCommit ? "Release to turn on" : "Keep pulling…"}
+            </motion.span>
+          )}
+          {pull > 0 && active && (
+            <motion.span
+              key="hint-off"
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 6 }}
+              className="pointer-events-none absolute -top-6 text-[10px] font-medium text-white/90"
+            >
+              {willCommit ? "Release to turn off" : "Keep pulling…"}
+            </motion.span>
+          )}
+        </AnimatePresence>
       </div>
-    </div>
+    </>
   );
 };
 

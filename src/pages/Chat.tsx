@@ -1497,6 +1497,7 @@ const Chat = () => {
             steps={DISAPPEAR_OPTIONS}
             active={disappearMode}
             currentMs={disappearMs}
+            onOpenPicker={() => setShowDisappearSheet(true)}
             onCommit={(ms) => {
               if (ms === 0) { setDisappearMode(false); }
               else { setDisappearMs(ms); setDisappearMode(true); }

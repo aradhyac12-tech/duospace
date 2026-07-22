@@ -48,7 +48,43 @@ const Groic = () => {
       setRecent(r);
       localStorage.setItem(RECENT_KEY, JSON.stringify(r));
     } catch (err) {
-      toast({ title: "Search failed", description: (err as Error).message, variant: "destructive" });
+      // Client-side fallback so Groic still works if the `music-search`
+      // edge function isn't deployed / rate-limited / unauthorized.
+      // We hit a public Piped instance directly from the browser.
+      try {
+        const pipedInstances = [
+          "https://pipedapi.kavin.rocks",
+          "https://pipedapi.adminforge.de",
+          "https://api.piped.yt",
+        ];
+        let fallback: SearchResult[] = [];
+        for (const inst of pipedInstances) {
+          try {
+            const res = await fetch(`${inst}/search?q=${encodeURIComponent(q.trim())}&filter=music_songs`);
+            if (!res.ok) continue;
+            const j = await res.json();
+            fallback = (j.items || []).filter((i: any) => i.url && i.title).slice(0, 20).map((i: any) => {
+              const videoId = String(i.url).replace("/watch?v=", "");
+              return {
+                videoId,
+                title: i.title,
+                artist: i.uploaderName || "Unknown",
+                thumbnail: i.thumbnail || `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`,
+                duration: i.duration || 0,
+                url: `https://www.youtube.com/watch?v=${videoId}`,
+              } as SearchResult;
+            });
+            if (fallback.length) break;
+          } catch { /* try next instance */ }
+        }
+        if (fallback.length) {
+          setResults(fallback);
+        } else {
+          toast({ title: "Search failed", description: (err as Error).message, variant: "destructive" });
+        }
+      } catch {
+        toast({ title: "Search failed", description: (err as Error).message, variant: "destructive" });
+      }
     }
     setLoading(false);
   }, [recent, toast]);

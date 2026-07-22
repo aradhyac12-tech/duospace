@@ -20,20 +20,23 @@ const QUICK_OPTIONS = [
 const ScheduledMessagePicker = ({ message, onSchedule, onClose }: ScheduledMessagePickerProps) => {
   const [customDateTime, setCustomDateTime] = useState("");
 
+  // Min datetime = now + 1 min. Max = 48h out ("maximum one to two days").
+  const minDt = new Date(Date.now() + 60000).toISOString().slice(0, 16);
+  const maxDate = new Date(Date.now() + 48 * 60 * 60 * 1000);
+  const maxDt = maxDate.toISOString().slice(0, 16);
+
   const handleQuick = (option: typeof QUICK_OPTIONS[0]) => {
     const date = option.getDate ? option.getDate() : new Date(Date.now() + option.mins! * 60000);
+    if (date > maxDate) return;
     onSchedule(date);
   };
 
   const handleCustom = () => {
     if (!customDateTime) return;
     const date = new Date(customDateTime);
-    if (isNaN(date.getTime()) || date <= new Date()) return;
+    if (isNaN(date.getTime()) || date <= new Date() || date > maxDate) return;
     onSchedule(date);
   };
-
-  // Min datetime = now + 1 min
-  const minDt = new Date(Date.now() + 60000).toISOString().slice(0, 16);
 
   return (
     <motion.div
@@ -76,18 +79,20 @@ const ScheduledMessagePicker = ({ message, onSchedule, onClose }: ScheduledMessa
           type="datetime-local"
           value={customDateTime}
           min={minDt}
+          max={maxDt}
           onChange={(e) => setCustomDateTime(e.target.value)}
           className="flex-1 h-9 rounded-xl text-xs"
         />
         <Button
           onClick={handleCustom}
-          disabled={!customDateTime}
+          disabled={!customDateTime || new Date(customDateTime) > maxDate}
           size="sm"
           className="h-9 rounded-xl bg-foreground text-background px-3"
         >
           <Send className="h-3.5 w-3.5" />
         </Button>
       </div>
+      <p className="text-[10px] text-muted-foreground mt-2">Can be scheduled up to 2 days ahead</p>
     </motion.div>
   );
 };

@@ -61,6 +61,14 @@ interface Options {
   enabled: boolean;
   /** Active session: false → paused (e.g. on_open mode + page hidden). */
   active: boolean;
+  /**
+   * Whether anything is actually reading `debug`. When false (the default —
+   * the debug overlay is hidden behind a 5-tap gesture and off in normal
+   * use), the 5s debug-snapshot ticker below is skipped entirely, so the
+   * consuming screen doesn't re-render every 5 seconds for a panel nobody
+   * is looking at.
+   */
+  debugEnabled?: boolean;
 }
 
 const TELE = "liveLocation";
@@ -119,7 +127,7 @@ function detectPlatform(): string {
   return "Web";
 }
 
-export function useLiveLocation({ userId, enabled, active }: Options) {
+export function useLiveLocation({ userId, enabled, active, debugEnabled = false }: Options) {
   const [state, setState]           = useState<LiveLocationState>("idle");
   const [location, setLocation]     = useState<LiveLocationData | null>(null);
   const [error, setError]           = useState<string | null>(null);
@@ -532,7 +540,15 @@ export function useLiveLocation({ userId, enabled, active }: Options) {
     };
   }, [enabled, active, state, startWatcher, flushQueueIfAny]);
 
-  // ── Publish debug snapshot every 5s (cheap, low-rerender) ─────────────────
+  // ── Publish debug snapshot periodically. live.debug.queueDepth also feeds
+  // an always-visible "queued N" chip (not just the hidden debug overlay),
+  // so this can't be skipped outright — but ticking every 5s regardless of
+  // whether anyone's looking at the full debug panel was causing the
+  // consuming screen (a Leaflet map + a lot of JSX) to re-render every 5s
+  // during ordinary use, which is exactly the kind of background churn that
+  // shows up as "laggy" on lower-end devices. Slow the cadence when the
+  // debug overlay is closed; speed back up while it's open for live
+  // diagnostics. ──────────────────────────────────────────────────────────
   useEffect(() => {
     let cancelled = false;
     const tick = async () => {
@@ -554,9 +570,9 @@ export function useLiveLocation({ userId, enabled, active }: Options) {
       });
     };
     void tick();
-    const id = window.setInterval(tick, 5_000);
+    const id = window.setInterval(tick, debugEnabled ? 5_000 : 20_000);
     return () => { cancelled = true; window.clearInterval(id); };
-  }, []);
+  }, [debugEnabled]);
 
   return { state, location, error, permission, debug, flushQueueIfAny };
 }

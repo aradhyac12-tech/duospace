@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { invokeEdgeFunction } from "@/lib/edgeFunction";
 import { useAuth } from "@/hooks/useAuth";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -328,10 +329,9 @@ const Playlist = () => {
     if (!searchQuery.trim()) return;
     setSearching(true);
     try {
-      const { data, error } = await supabase.functions.invoke("music-search", {
+      const data = await invokeEdgeFunction<{ results?: SearchResult[] }>("music-search", {
         body: { query: searchQuery.trim() },
       });
-      if (error) throw error;
       setSearchResults(data?.results || []);
     } catch (err: unknown) {
       toast({ title: "Search failed", description: (err instanceof Error ? err.message : String(err)), variant: "destructive" });

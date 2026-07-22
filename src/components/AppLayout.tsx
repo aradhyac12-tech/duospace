@@ -1,5 +1,6 @@
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
+import { useSwipeNav } from "@/hooks/useSwipeNav";
 import { AnimatePresence, motion } from "framer-motion";
 
 import FloatingDock from "@/components/FloatingDock";
@@ -25,6 +26,35 @@ const AppLayout = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
+
+  // Swipe left/right between the main tabs (Chat -> Calls -> Settings),
+  // mirroring the bottom nav order. Direction is tracked so the page
+  // transition can slide the correct way for BOTH swipe and tap navigation,
+  // not just an instant cut.
+  const SWIPE_NAV_ORDER = ["/chat", "/calls", "/settings"];
+  const prevPathname = useRef(location.pathname);
+  const direction = useRef(0); // 1 = forward/next, -1 = back/prev, 0 = unrelated nav
+  const currentTabIndex = SWIPE_NAV_ORDER.indexOf(location.pathname);
+
+  if (prevPathname.current !== location.pathname) {
+    const prevIdx = SWIPE_NAV_ORDER.indexOf(prevPathname.current);
+    direction.current = (prevIdx !== -1 && currentTabIndex !== -1) ? (currentTabIndex > prevIdx ? 1 : -1) : 0;
+    prevPathname.current = location.pathname;
+  }
+
+  const swipeRef = useSwipeNav<HTMLDivElement>({
+    enabled: currentTabIndex !== -1,
+    onSwipeLeft: () => {
+      if (currentTabIndex !== -1 && currentTabIndex < SWIPE_NAV_ORDER.length - 1) {
+        navigate(SWIPE_NAV_ORDER[currentTabIndex + 1]);
+      }
+    },
+    onSwipeRight: () => {
+      if (currentTabIndex > 0) {
+        navigate(SWIPE_NAV_ORDER[currentTabIndex - 1]);
+      }
+    },
+  });
 
 
   // FIX AUDIT #4: Session guard handles token expiry, refresh failures, multi-device conflicts
@@ -84,17 +114,25 @@ const AppLayout = () => {
       <div className="h-[100dvh] bg-background overflow-x-hidden flex flex-col no-overscroll">
         <OfflineBanner isOnline={isOnline} />
         <main
+          ref={swipeRef}
           className="flex-1 min-h-0 flex flex-col overflow-hidden"
           style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 84px)" }}
         >
           {/* FIX AUDIT #2: Error boundary per page so one crash doesn't kill the whole app */}
           <ErrorBoundary context="PageContent">
-            <AnimatePresence mode="wait" initial={false}>
+            <AnimatePresence mode="wait" initial={false} custom={direction.current}>
               <motion.div
                 key={location.pathname}
-                initial={{ opacity: 0, y: 10, scale: 0.985, filter: "blur(4px)" }}
-                animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
-                exit={{ opacity: 0, y: -8, scale: 0.99, filter: "blur(3px)" }}
+                custom={direction.current}
+                initial={direction.current !== 0
+                  ? { opacity: 0, x: direction.current * 36 }
+                  : { opacity: 0, y: 10, scale: 0.985, filter: "blur(4px)" }}
+                animate={direction.current !== 0
+                  ? { opacity: 1, x: 0 }
+                  : { opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
+                exit={direction.current !== 0
+                  ? { opacity: 0, x: direction.current * -36 }
+                  : { opacity: 0, y: -8, scale: 0.99, filter: "blur(3px)" }}
                 transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
                 className="flex-1 min-h-0 flex flex-col overflow-hidden"
               >

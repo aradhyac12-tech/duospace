@@ -41,6 +41,18 @@ const readableError = (e: unknown) => {
   return String(e);
 };
 
+// Soft ambient glow behind the auth screens — theme-aware (uses the
+// primary/accent CSS vars so it matches whichever preset/mode is active),
+// purely decorative, shared across the main form, OAuth-loading, and
+// forgot-password states so they feel like one consistent screen rather
+// than three differently-flat ones.
+const AmbientGlow = () => (
+  <div className="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
+    <div className="absolute -top-24 -left-16 h-72 w-72 rounded-full blur-3xl opacity-25" style={{ background: "hsl(var(--primary))" }} />
+    <div className="absolute -bottom-32 -right-20 h-80 w-80 rounded-full blur-3xl opacity-20" style={{ background: "hsl(var(--accent))" }} />
+  </div>
+);
+
 const Auth = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -140,12 +152,7 @@ const Auth = () => {
       }
     };
 
-    const setup = async () => {
-      const { App } = await import("@capacitor/app");
-      logInfo("auth.deeplink", "appUrlOpen listener registered", {
-        platform: getAuthPlatform(),
-      });
-      sub = await App.addListener("appUrlOpen", async ({ url }) => {
+    const handleDeepLinkUrl = async (url: string, source: "appUrlOpen" | "getLaunchUrl") => {
         const traceId = newTraceId("oauth_cb_native");
         const receivedAt = Date.now();
         try {
@@ -154,8 +161,9 @@ const Auth = () => {
           const errorDesc = parsed.get("error_description") || parsed.get("error");
           const isPasswordRecovery = parsed.get("type") === "recovery" || url.includes("reset-password");
 
-          logInfo("auth.deeplink", "appUrlOpen fired", {
+          logInfo("auth.deeplink", "deep link received", {
             request_id: traceId,
+            source,
             received_at: receivedAt,
             platform: getAuthPlatform(),
             raw_scheme: parsed.url.protocol.replace(":", ""),
@@ -190,7 +198,11 @@ const Auth = () => {
                 callback_type: result.type,
                 expires_at: result.session.expires_at,
               }, traceId);
-              navigate(isPasswordRecovery ? "/reset-password" : getPostAuthPath(url), { replace: true });
+              const destination = isPasswordRecovery ? "/reset-password" : getPostAuthPath(url);
+              logInfo("auth.deeplink", "navigating after session creation", {
+                request_id: traceId, destination, user_id: result.session.user.id,
+              }, traceId);
+              navigate(destination, { replace: true });
             } else {
               logError("auth.deeplink", "callback finalized with no session", {
                 request_id: traceId, duration_ms,
@@ -200,14 +212,45 @@ const Auth = () => {
             setOauthProcessing(false);
           }
         } catch (err) {
-          logError("auth.deeplink", "appUrlOpen handler threw", { request_id: traceId, err: supaErr(err) }, traceId);
+          logError("auth.deeplink", "deep link handler threw", { request_id: traceId, source, err: supaErr(err) }, traceId);
           if (!cancelled) {
             toast({ title: "Sign in failed", description: readableError(err), variant: "destructive" });
             setOauthProcessing(false);
           }
         }
         await closeInAppBrowser();
+    };
+
+    // Two delivery paths, both required:
+    //  1) appUrlOpen — fires while the app is alive (foreground/background)
+    //     when the OS hands it the duospace:// callback.
+    //  2) getLaunchUrl — covers the case where the OS killed the app while
+    //     the user was on Google's consent screen (common under memory
+    //     pressure). The app is then cold-launched BY the duospace://
+    //     callback itself, and that launch can complete — Capacitor bridge
+    //     ready, event dispatched — before this component mounts and
+    //     subscribes, so appUrlOpen alone can silently miss it. Checking
+    //     getLaunchUrl() once on mount catches that case.
+    const setup = async () => {
+      const { App } = await import("@capacitor/app");
+      logInfo("auth.deeplink", "appUrlOpen listener registered", {
+        platform: getAuthPlatform(),
       });
+      sub = await App.addListener("appUrlOpen", ({ url }) => {
+        void handleDeepLinkUrl(url, "appUrlOpen");
+      });
+
+      try {
+        const launch = await App.getLaunchUrl();
+        if (!cancelled && launch?.url && hasAuthCallback(launch.url)) {
+          logInfo("auth.deeplink", "cold-start launch URL contains auth callback", {
+            platform: getAuthPlatform(),
+          });
+          await handleDeepLinkUrl(launch.url, "getLaunchUrl");
+        }
+      } catch {
+        /* getLaunchUrl not supported on this platform/version — appUrlOpen still covers the live case */
+      }
     };
 
     setup();
@@ -391,6 +434,28 @@ const Auth = () => {
         });
         if (error) throw error;
         if (!data?.url) throw new Error("No authorization URL returned");
+        // Log the exact URL we're about to hand to the system browser — this
+        // is what actually gets sent to Supabase's /authorize endpoint (and
+        // from there to Google), so the real redirect_to param can be
+        // confirmed from logs instead of assumed from source code. Redact
+        // anything that looks like a secret/token, keep everything else
+        // (including redirect_to) intact for debugging.
+        try {
+          const outgoing = new URL(data.url);
+          const redacted = new URL(data.url);
+          for (const k of Array.from(redacted.searchParams.keys())) {
+            if (/token|secret|key|code/i.test(k)) redacted.searchParams.set(k, "<redacted>");
+          }
+          logInfo("auth.oauth", "authorization URL received from supabase", {
+            request_id: traceId, provider,
+            host: outgoing.host,
+            path: outgoing.pathname,
+            redirect_to_param: outgoing.searchParams.get("redirect_to"),
+            full_url_redacted: redacted.toString(),
+          }, traceId);
+        } catch {
+          /* URL parsing failed — non-fatal, proceed to open browser regardless */
+        }
         const { Browser } = await import("@capacitor/browser");
         await Browser.open({ url: data.url, presentationStyle: "popover" });
         logInfo("auth.oauth", "opened system browser", { request_id: traceId, provider, status: "redirected" }, traceId);
@@ -441,12 +506,13 @@ const Auth = () => {
   // OAuth processing state
   if (oauthProcessing) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background px-6">
+      <div className="min-h-screen flex items-center justify-center bg-background px-6 relative overflow-hidden">
+        <AmbientGlow />
         <motion.div
           initial={{ opacity: 0, scale: 0.96 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-          className="text-center space-y-5 max-w-xs"
+          className="text-center space-y-5 max-w-xs relative z-10"
         >
           <div className="relative mx-auto h-16 w-16">
             <motion.div
@@ -486,8 +552,9 @@ const Auth = () => {
   // Forgot password overlay
   if (showForgot) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background px-6">
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-sm space-y-6">
+      <div className="min-h-screen flex items-center justify-center bg-background px-6 relative overflow-hidden">
+        <AmbientGlow />
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-sm space-y-6 relative z-10">
           <div className="text-center space-y-1">
             <h1 className="text-2xl font-semibold tracking-tight">Reset Password</h1>
             <p className="text-sm text-muted-foreground">Enter your email to receive a reset link</p>
@@ -512,11 +579,12 @@ const Auth = () => {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background px-6">
+    <div className="min-h-screen flex items-center justify-center bg-background px-6 relative overflow-hidden">
+      <AmbientGlow />
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-sm space-y-6"
+        className="w-full max-w-sm space-y-6 relative z-10"
       >
         <div className="text-center space-y-1">
           {/* Show custom app icon if set */}
@@ -525,7 +593,7 @@ const Auth = () => {
             const name = storage.get("duo-app-name") || "DuoSpace";
             return icon ? (
               <div className="flex flex-col items-center gap-3 mb-2">
-                <img src={icon} alt={name} className="h-16 w-16 rounded-2xl object-cover shadow-md mx-auto" />
+                <img src={icon} alt={name} className="h-16 w-16 rounded-2xl object-cover shadow-[0_8px_30px_rgba(0,0,0,0.12)] ring-1 ring-border/40 mx-auto" />
                 <h1 className="text-3xl font-semibold tracking-tight">{name}</h1>
               </div>
             ) : (

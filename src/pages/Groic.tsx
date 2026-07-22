@@ -4,7 +4,7 @@ import { Search, Loader2, Plus, Play, Sparkles, Users, ChevronLeft } from "lucid
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useGroic, GroicTrack } from "@/contexts/GroicContext";
-import { supabase } from "@/integrations/supabase/client";
+import { invokeEdgeFunction } from "@/lib/edgeFunction";
 import { useToast } from "@/hooks/use-toast";
 import { hapticLight, hapticMedium } from "@/lib/haptics";
 import { useNavigate } from "react-router-dom";
@@ -42,8 +42,7 @@ const Groic = () => {
     if (!q.trim()) return;
     setLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke("music-search", { body: { query: q.trim() } });
-      if (error) throw error;
+      const data = await invokeEdgeFunction<{ results?: SearchResult[] }>("music-search", { body: { query: q.trim() } });
       setResults(data?.results || []);
       const r = [q.trim(), ...recent.filter(x => x !== q.trim())].slice(0, 8);
       setRecent(r);

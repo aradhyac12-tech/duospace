@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
 import { useTheme, ThemeColor, THEMES } from "@/contexts/ThemeContext";
+import { WALLPAPERS, resolveWallpaperStyle } from "@/lib/wallpapers";
 import {
   ChevronLeft, Check, ImageIcon, X, Bell, Fingerprint, Vibrate, Link2, Unlink,
   EyeOff, Copy, Share2, Eye, ChevronRight, Palette, Download, RotateCcw,
@@ -27,7 +28,6 @@ import { hashPin } from "@/lib/crypto";
 import BackupManager from "@/components/BackupManager";
 import DailyKeyManager from "@/components/DailyKeyManager";
 import RecentDevices from "@/components/RecentDevices";
-import GoogleDriveBackup from "@/components/GoogleDriveBackup";
 import ThemeStudio from "@/components/ThemeStudio";
 import PeekConfigDialog from "@/components/PeekConfigDialog";
 import QRSignInDisplay from "@/components/auth/QRSignInDisplay";
@@ -36,28 +36,11 @@ import PasskeyRegister from "@/components/auth/PasskeyRegister";
 import AddEmailPasswordDialog from "@/components/auth/AddEmailPasswordDialog";
 
 
-const presetWallpapers = [
-  { id: "w-minimal-light", name: "Minimal Light", category: "Minimal", style: `linear-gradient(180deg, hsl(30,15%,97%) 0%, hsl(30,10%,94%) 100%), url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%22180%22%20height%3D%22180%22%3E%3Cfilter%20id%3D%22n%22%3E%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%220.9%22%20numOctaves%3D%222%22%20stitchTiles%3D%22stitch%22/%3E%3CfeColorMatrix%20type%3D%22saturate%22%20values%3D%220%22/%3E%3C/filter%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20filter%3D%22url%28%2523n%29%22%20opacity%3D%220.05%22/%3E%3C/svg%3E")` },
-  { id: "w-minimal-dark", name: "Minimal Dark", category: "Minimal", style: `linear-gradient(180deg, hsl(230,15%,10%) 0%, hsl(230,12%,7%) 100%), url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%22180%22%20height%3D%22180%22%3E%3Cfilter%20id%3D%22n%22%3E%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%220.9%22%20numOctaves%3D%222%22%20stitchTiles%3D%22stitch%22/%3E%3CfeColorMatrix%20type%3D%22saturate%22%20values%3D%220%22/%3E%3C/filter%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20filter%3D%22url%28%2523n%29%22%20opacity%3D%220.08%22/%3E%3C/svg%3E")` },
-  { id: "w-sunset", name: "Sunset", category: "Soft Gradient", style: `linear-gradient(135deg, hsl(20,70%,90%) 0%, hsl(345,55%,85%) 100%)` },
-  { id: "w-horizon", name: "Horizon", category: "Soft Gradient", style: `linear-gradient(135deg, hsl(200,55%,88%) 0%, hsl(230,45%,80%) 100%)` },
-  { id: "w-mesh-light", name: "Mesh Bloom", category: "Mesh Gradient", style: `radial-gradient(at 15% 20%, hsl(340,70%,88%) 0%, transparent 55%), radial-gradient(at 85% 10%, hsl(220,65%,86%) 0%, transparent 55%), radial-gradient(at 50% 100%, hsl(160,55%,86%) 0%, transparent 55%), hsl(30,20%,97%)` },
-  { id: "w-mesh-dark", name: "Mesh Glow", category: "Mesh Gradient", style: `radial-gradient(at 20% 15%, hsl(265,60%,25%) 0%, transparent 55%), radial-gradient(at 85% 20%, hsl(200,55%,22%) 0%, transparent 55%), radial-gradient(at 50% 100%, hsl(320,50%,20%) 0%, transparent 55%), hsl(230,20%,8%)` },
-  { id: "w-aurora", name: "Aurora", category: "Aurora", style: `radial-gradient(at 10% 0%, hsl(160,80%,35%) 0%, transparent 45%), radial-gradient(at 90% 10%, hsl(260,80%,40%) 0%, transparent 45%), radial-gradient(at 50% 90%, hsl(200,80%,35%) 0%, transparent 50%), hsl(230,25%,6%)` },
-  { id: "w-grain-warm", name: "Warm Grain", category: "Noise", style: `linear-gradient(160deg, hsl(28,30%,92%) 0%, hsl(24,25%,86%) 100%), url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%22180%22%20height%3D%22180%22%3E%3Cfilter%20id%3D%22n%22%3E%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%220.9%22%20numOctaves%3D%222%22%20stitchTiles%3D%22stitch%22/%3E%3CfeColorMatrix%20type%3D%22saturate%22%20values%3D%220%22/%3E%3C/filter%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20filter%3D%22url%28%2523n%29%22%20opacity%3D%220.05%22/%3E%3C/svg%3E")` },
-  { id: "w-grain-dark", name: "Charcoal Grain", category: "Noise", style: `linear-gradient(160deg, hsl(0,0%,11%) 0%, hsl(0,0%,7%) 100%), url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%22180%22%20height%3D%22180%22%3E%3Cfilter%20id%3D%22n%22%3E%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%220.9%22%20numOctaves%3D%222%22%20stitchTiles%3D%22stitch%22/%3E%3CfeColorMatrix%20type%3D%22saturate%22%20values%3D%220%22/%3E%3C/filter%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20filter%3D%22url%28%2523n%29%22%20opacity%3D%220.08%22/%3E%3C/svg%3E")` },
-  { id: "w-paper", name: "Paper", category: "Paper", style: `linear-gradient(175deg, hsl(38,35%,95%) 0%, hsl(35,28%,90%) 100%), url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%22180%22%20height%3D%22180%22%3E%3Cfilter%20id%3D%22n%22%3E%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%220.75%22%20numOctaves%3D%223%22%20stitchTiles%3D%22stitch%22/%3E%3CfeColorMatrix%20type%3D%22saturate%22%20values%3D%220%22/%3E%3C/filter%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20filter%3D%22url%28%2523n%29%22%20opacity%3D%220.045%22/%3E%3C/svg%3E")` },
-  { id: "w-dots-light", name: "Dot Grid Light", category: "Minimal Shapes", style: `radial-gradient(circle, hsl(30,10%,75%) 1px, transparent 1.2px) 0 0/16px 16px, hsl(30,15%,97%)` },
-  { id: "w-dots-dark", name: "Dot Grid Dark", category: "Minimal Shapes", style: `radial-gradient(circle, hsl(220,10%,30%) 1px, transparent 1.2px) 0 0/16px 16px, hsl(230,15%,9%)` },
-  { id: "w-forest", name: "Forest Mist", category: "Nature", style: `linear-gradient(160deg, hsl(150,25%,90%) 0%, hsl(155,20%,78%) 100%)` },
-  { id: "w-ocean", name: "Ocean Depth", category: "Nature", style: `linear-gradient(160deg, hsl(195,45%,20%) 0%, hsl(210,50%,10%) 100%)` },
-];
-
 const Settings = () => {
   const { theme, setTheme, colorMode, toggleColorMode, chatWallpaper, setChatWallpaper, appIcon, setAppIcon, appName, setAppName, appSettings, updateSetting } = useTheme();
   const wallpapersByCategory = useMemo(() => {
-    const groups = new Map<string, typeof presetWallpapers>();
-    for (const w of presetWallpapers) {
+    const groups = new Map<string, typeof WALLPAPERS>();
+    for (const w of WALLPAPERS) {
       const list = groups.get(w.category) ?? [];
       list.push(w);
       groups.set(w.category, list);
@@ -136,12 +119,24 @@ const Settings = () => {
     load();
 
     const loadRequests = async () => {
-      // FIX: filter to current user as receiver only
-      const { data: reqs } = await supabase.from("partner_requests" as any)
-        .select("id,user_id,avatar_url,display_name,username,partner_id,pet_name,gender,phone_number,public_key,push_token,push_platform,mood_emoji,mood_text,mood_updated_at,location_mode,gallery_shared,created_at,updated_at")
+      // FIX (was selecting columns that don't exist on partner_requests —
+      // e.g. user_id/partner_id/avatar_url/mood_emoji — which made PostgREST
+      // reject the query and silently left pendingRequests empty forever, so
+      // requests never showed up for the receiver). This table only has
+      // id, sender_id, receiver_id, status, created_at, updated_at.
+      const { data: reqs, error: reqsErr } = await supabase.from("partner_requests" as any)
+        .select("id,sender_id,receiver_id,status,created_at,updated_at")
         .eq("status","pending")
         .eq("receiver_id", user.id);
-      if (reqs) setPendingRequests(reqs);
+      if (reqsErr) { setPendingRequests([]); return; }
+      if (!reqs?.length) { setPendingRequests([]); return; }
+      // Join sender display info so we can show a name instead of a raw id.
+      const senderIds = (reqs as any[]).map(r => r.sender_id);
+      const { data: senderProfiles } = await supabase.from("profiles")
+        .select("user_id,display_name,username,avatar_url")
+        .in("user_id", senderIds);
+      const byId = new Map((senderProfiles||[]).map((p: any) => [p.user_id, p]));
+      setPendingRequests((reqs as any[]).map(r => ({ ...r, sender: byId.get(r.sender_id) })));
     };
     loadRequests();
 
@@ -381,7 +376,7 @@ const Settings = () => {
               {pendingRequests.map(req => (
                 <div key={req.id} className="bg-card rounded-2xl border border-primary/20 p-4 flex items-center gap-3">
                   <div className="h-9 w-9 rounded-full bg-primary/20 flex items-center justify-center text-sm font-semibold text-primary">💌</div>
-                  <div className="flex-1"><p className="text-sm font-medium">Partner request</p><p className="text-[11px] text-muted-foreground">from {req.sender_id?.slice(0,8)}…</p></div>
+                  <div className="flex-1"><p className="text-sm font-medium">Partner request</p><p className="text-[11px] text-muted-foreground">from {req.sender?.display_name || (req.sender?.username && `@${req.sender.username}`) || `${req.sender_id?.slice(0,8)}…`}</p></div>
                   <button onClick={() => acceptRequest(req)} className="h-7 px-3 rounded-full bg-foreground text-background text-[11px]">Accept</button>
                   <button onClick={() => declineRequest(req.id)} className="h-7 px-3 rounded-full bg-muted text-muted-foreground text-[11px]">Decline</button>
                 </div>
@@ -420,12 +415,6 @@ const Settings = () => {
             </div>
           ) : (
             <div className="space-y-2">
-              <button onClick={() => { hapticLight(); setShowInviteQr(true); }}
-                className="w-full bg-card rounded-2xl border border-border/60 p-4 flex items-center gap-3 active:scale-[0.98] transition-transform">
-                <QrCode className="h-4 w-4 text-muted-foreground shrink-0" />
-                <div className="flex-1 text-left"><p className="text-sm font-medium">Show my QR</p><p className="text-[11px] text-muted-foreground">Your partner scans this to link instantly</p></div>
-                <ChevronRight className="h-4 w-4 text-muted-foreground" />
-              </button>
               <button onClick={() => { hapticLight(); setShowPartnerScanner(true); }}
                 className="w-full bg-card rounded-2xl border border-border/60 p-4 flex items-center gap-3 active:scale-[0.98] transition-transform">
                 <Scan className="h-4 w-4 text-muted-foreground shrink-0" />
@@ -491,19 +480,6 @@ const Settings = () => {
           </section>
         )}
 
-        {/* Username */}
-        <section hidden={!matches("username profile handle")}>
-          <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-2.5 sticky top-[112px] z-10 bg-background/85 backdrop-blur-sm py-1 -mx-1 px-1 rounded">Your Username</p>
-          <div className="bg-card rounded-2xl border border-border/60 p-4 space-y-2">
-            <div className="flex gap-2">
-              <Input value={myUsername} onChange={e=>setMyUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_.]/g,""))}
-                placeholder="username" className="h-9 rounded-xl flex-1 text-sm" />
-              <Button onClick={saveUsername} size="sm" className="rounded-xl bg-foreground text-background h-9 px-4 text-xs">Save</Button>
-            </div>
-            <p className="text-[10px] text-muted-foreground">Letters, numbers, . and _ only. Min 3 characters.</p>
-          </div>
-        </section>
-
         {/* Appearance */}
         <section hidden={!matches("appearance theme color wallpaper icon name dark light")}>
           <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-2.5 sticky top-[112px] z-10 bg-background/85 backdrop-blur-sm py-1 -mx-1 px-1 rounded">Appearance</p>
@@ -551,7 +527,7 @@ const Settings = () => {
               </div>
               <div className="flex items-center gap-2">
                 {appIcon && <button onClick={() => setAppIcon(null)} className="text-[10px] text-destructive">Remove</button>}
-                <button onClick={() => appIconInputRef.current?.click()} className="h-7 px-3 rounded-full bg-muted text-[11px] text-foreground"><Upload className="h-3 w-3" /></button>
+                <button onClick={() => appIconInputRef.current?.click()} aria-label="Upload custom app icon" className="h-7 px-3 rounded-full bg-muted text-[11px] text-foreground"><Upload className="h-3 w-3" aria-hidden="true" /></button>
               </div>
             </div>
             <input ref={appIconInputRef} type="file" accept="image/*" className="hidden" onChange={async e => {
@@ -574,9 +550,11 @@ const Settings = () => {
               <div className="grid grid-cols-4 gap-2">
                 {THEMES.map((t) => (
                   <button key={t.id} onClick={() => { setTheme(t.id); hapticLight(); }}
+                    aria-label={`${t.name} theme${theme===t.id ? " (selected)" : ""}`}
+                    aria-pressed={theme===t.id}
                     className={cn("h-12 rounded-xl border-2 transition-all", theme===t.id?"border-foreground":"border-transparent")}
                     style={{ background:t.preview }}>
-                    {theme===t.id && <Check className="h-4 w-4 text-foreground mx-auto" />}
+                    {theme===t.id && <Check className="h-4 w-4 text-foreground mx-auto" aria-hidden="true" />}
                   </button>
                 ))}
               </div>
@@ -597,20 +575,26 @@ const Settings = () => {
                 {wallpapersByCategory.map(([category, list]) => (
                   <div key={category}>
                     <p className="text-[10px] text-muted-foreground mb-1.5">{category}</p>
-                    <div className="flex gap-2 overflow-x-auto pb-1">
-                      {list.map(w => (
-                        <button key={w.id} onClick={() => { setChatWallpaper(w.style); hapticLight(); }}
-                          title={w.name}
-                          className={cn("h-16 w-16 rounded-2xl shrink-0 border-2 transition-all relative overflow-hidden",
-                            chatWallpaper===w.style ? "border-foreground" : "border-transparent")}
-                          style={{ background: w.style }}>
-                          {chatWallpaper===w.style && (
-                            <span className="absolute inset-0 flex items-center justify-center bg-black/10">
-                              <Check className="h-4 w-4 text-white drop-shadow" />
-                            </span>
-                          )}
-                        </button>
-                      ))}
+                    <div data-swipe-nav-ignore className="flex gap-2 overflow-x-auto pb-1">
+                      {list.map(w => {
+                        const preview = colorMode === "dark" ? w.dark : w.light;
+                        const active = chatWallpaper === w.id;
+                        return (
+                          <button key={w.id} onClick={() => { setChatWallpaper(w.id); hapticLight(); }}
+                            title={w.name}
+                            aria-label={`${w.name} wallpaper${active ? " (selected)" : ""}`}
+                            aria-pressed={active}
+                            className={cn("h-16 w-16 rounded-2xl shrink-0 border-2 transition-all relative overflow-hidden",
+                              active ? "border-foreground" : "border-transparent")}
+                            style={{ background: preview }}>
+                            {active && (
+                              <span className="absolute inset-0 flex items-center justify-center bg-black/10">
+                                <Check className="h-4 w-4 text-white drop-shadow" aria-hidden="true" />
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 ))}
@@ -689,11 +673,10 @@ const Settings = () => {
           </div>
         </section>
 
-        {/* Cloud Backup */}
+        {/* Cloud Backup — replaces the old per-user Google Drive flow, which
+            was still being rendered alongside this (duplicate "connect
+            backup" UI) until now. */}
         <BackupManager />
-
-        {/* Google Drive per-user backup */}
-        <GoogleDriveBackup />
 
         {/* Daily.co per-user key */}
         <DailyKeyManager />
@@ -879,10 +862,19 @@ const Settings = () => {
 
         <CodeSurpriseEditor partnerId={currentPartner} />
 
-        {/* Account */}
-        <section className="pb-4" hidden={!matches("account sign out logout email")}>
+        {/* Account (includes username — was a separate section, folded in here) */}
+        <section className="pb-4" hidden={!matches("account sign out logout email username profile handle")}>
           <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-2.5 sticky top-[112px] z-10 bg-background/85 backdrop-blur-sm py-1 -mx-1 px-1 rounded">Account</p>
           <p className="text-xs text-muted-foreground mb-2">{user?.email}</p>
+          <div className="bg-card rounded-2xl border border-border/60 p-4 space-y-2 mb-2">
+            <p className="text-[11px] font-medium text-muted-foreground">Username</p>
+            <div className="flex gap-2">
+              <Input value={myUsername} onChange={e=>setMyUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_.]/g,""))}
+                placeholder="username" className="h-9 rounded-xl flex-1 text-sm" />
+              <Button onClick={saveUsername} size="sm" className="rounded-xl bg-foreground text-background h-9 px-4 text-xs">Save</Button>
+            </div>
+            <p className="text-[10px] text-muted-foreground">Letters, numbers, . and _ only. Min 3 characters.</p>
+          </div>
           <button onClick={async () => { hapticMedium(); await supabase.auth.signOut(); }}
             className="w-full bg-card rounded-xl border border-border/60 p-3 text-sm text-destructive text-center active:scale-[0.98] transition-transform">
             Sign Out

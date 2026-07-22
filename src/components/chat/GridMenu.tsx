@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import { Image, MapPin, Music, Heart, X, BookOpen, Feather, Clock, Sparkles } from "lucide-react";
 import { hapticLight } from "@/lib/haptics";
+import { useLongPress } from "@/hooks/useLongPress";
 
 interface GridMenuProps {
   onClose: () => void;
@@ -14,27 +15,37 @@ interface GridMenuProps {
 interface HubButtonProps {
   onClick: () => void;
   isOpen: boolean;
+  onLongPress?: () => void;
 }
 
-export const HubButton = ({ onClick, isOpen }: HubButtonProps) => (
-  <motion.button
-    onClick={onClick}
-    whileTap={{ scale: 0.88 }}
-    animate={{
-      scale: isOpen ? 1.05 : 1,
-      backgroundColor: isOpen ? "hsl(var(--foreground))" : "hsl(var(--muted))",
-    }}
-    transition={{ type: "spring", stiffness: 380, damping: 22 }}
-    className="h-10 w-10 rounded-full flex items-center justify-center shrink-0 relative overflow-hidden"
-  >
-    <motion.div
-      animate={{ rotate: isOpen ? 180 : 0 }}
-      transition={{ type: "spring", stiffness: 260, damping: 20 }}
+export const HubButton = ({ onClick, isOpen, onLongPress }: HubButtonProps) => {
+  // 900ms: long enough that a normal tap (which opens the hub menu) never
+  // misfires this, short enough not to feel unresponsive as a "hold"
+  // gesture — most native long-press affordances land in the 500-900ms
+  // range; a literal multi-second hold would feel broken for this kind of
+  // shortcut even though it's fine for Instagram's continuous swipe gesture.
+  const lp = useLongPress(() => { if (onLongPress) onLongPress(); }, 900);
+  return (
+    <motion.button
+      onClick={onClick}
+      {...(onLongPress ? lp : {})}
+      whileTap={{ scale: 0.88 }}
+      animate={{
+        scale: isOpen ? 1.05 : 1,
+        backgroundColor: isOpen ? "hsl(var(--foreground))" : "hsl(var(--muted))",
+      }}
+      transition={{ type: "spring", stiffness: 380, damping: 22 }}
+      className="h-10 w-10 rounded-full flex items-center justify-center shrink-0 relative overflow-hidden"
     >
-      <Sparkles className={`h-4 w-4 transition-colors ${isOpen ? "text-background" : "text-foreground"}`} />
-    </motion.div>
-  </motion.button>
-);
+      <motion.div
+        animate={{ rotate: isOpen ? 180 : 0 }}
+        transition={{ type: "spring", stiffness: 260, damping: 20 }}
+      >
+        <Sparkles className={`h-4 w-4 transition-colors ${isOpen ? "text-background" : "text-foreground"}`} />
+      </motion.div>
+    </motion.button>
+  );
+};
 
 
 const navItems = [

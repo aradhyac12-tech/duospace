@@ -1,4 +1,5 @@
 import { Toaster } from "@/components/ui/toaster";
+import { MotionConfig } from "framer-motion";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -165,6 +166,14 @@ const App = () => {
   return (
   <QueryClientProvider client={queryClient}>
     <ThemeProvider>
+      {/* reducedMotion="user": every motion.* component in the app checks
+          prefers-reduced-motion automatically from here down. This is the
+          real fix for motion-sensitivity accessibility — the existing CSS
+          transition-duration override in index.css only ever caught plain
+          CSS transitions/animations, not Framer Motion's JS/RAF-driven
+          animations, which is what the vast majority of this app's motion
+          (chat bubbles, theme studio, gesture handles, splash) actually is. */}
+      <MotionConfig reducedMotion="user">
       <TooltipProvider>
         <Toaster />
         <Sonner />
@@ -194,6 +203,7 @@ const App = () => {
           </Suspense>
         </BrowserRouter>
       </TooltipProvider>
+      </MotionConfig>
     </ThemeProvider>
   </QueryClientProvider>
   );

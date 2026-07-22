@@ -108,6 +108,7 @@ const MapView = () => {
     userId: user?.id ?? null,
     enabled: !!user,
     active: sharingActive,
+    debugEnabled: debugOpen,
   });
   const myLocation = live.location;
   const locationError = live.error;
@@ -517,7 +518,7 @@ const MapView = () => {
   }, []);
 
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col flex-1 min-h-0">
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col flex-1 min-h-0 overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: "touch" as any }}>
       <PageHeader title="Map" subtitle="Always close" />
 
       <div

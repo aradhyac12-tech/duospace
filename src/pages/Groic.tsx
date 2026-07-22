@@ -4,7 +4,7 @@ import { Search, Loader2, Plus, Play, Sparkles, Users, ChevronLeft } from "lucid
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useGroic, GroicTrack } from "@/contexts/GroicContext";
-import { supabase } from "@/integrations/supabase/client";
+import { invokeEdgeFunction } from "@/lib/edgeFunction";
 import { useToast } from "@/hooks/use-toast";
 import { hapticLight, hapticMedium } from "@/lib/haptics";
 import { useNavigate } from "react-router-dom";
@@ -42,14 +42,49 @@ const Groic = () => {
     if (!q.trim()) return;
     setLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke("music-search", { body: { query: q.trim() } });
-      if (error) throw error;
+      const data = await invokeEdgeFunction<{ results?: SearchResult[] }>("music-search", { body: { query: q.trim() } });
       setResults(data?.results || []);
       const r = [q.trim(), ...recent.filter(x => x !== q.trim())].slice(0, 8);
       setRecent(r);
       localStorage.setItem(RECENT_KEY, JSON.stringify(r));
     } catch (err) {
-      toast({ title: "Search failed", description: (err as Error).message, variant: "destructive" });
+      // Client-side fallback so Groic still works if the `music-search`
+      // edge function isn't deployed / rate-limited / unauthorized.
+      // We hit a public Piped instance directly from the browser.
+      try {
+        const pipedInstances = [
+          "https://pipedapi.kavin.rocks",
+          "https://pipedapi.adminforge.de",
+          "https://api.piped.yt",
+        ];
+        let fallback: SearchResult[] = [];
+        for (const inst of pipedInstances) {
+          try {
+            const res = await fetch(`${inst}/search?q=${encodeURIComponent(q.trim())}&filter=music_songs`);
+            if (!res.ok) continue;
+            const j = await res.json();
+            fallback = (j.items || []).filter((i: any) => i.url && i.title).slice(0, 20).map((i: any) => {
+              const videoId = String(i.url).replace("/watch?v=", "");
+              return {
+                videoId,
+                title: i.title,
+                artist: i.uploaderName || "Unknown",
+                thumbnail: i.thumbnail || `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`,
+                duration: i.duration || 0,
+                url: `https://www.youtube.com/watch?v=${videoId}`,
+              } as SearchResult;
+            });
+            if (fallback.length) break;
+          } catch { /* try next instance */ }
+        }
+        if (fallback.length) {
+          setResults(fallback);
+        } else {
+          toast({ title: "Search failed", description: (err as Error).message, variant: "destructive" });
+        }
+      } catch {
+        toast({ title: "Search failed", description: (err as Error).message, variant: "destructive" });
+      }
     }
     setLoading(false);
   }, [recent, toast]);

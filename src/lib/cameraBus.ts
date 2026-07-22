@@ -158,9 +158,12 @@ export interface CameraLease {
  * elapses without a new acquire.
  */
 export async function acquireCamera(facing: Facing = "user"): Promise<CameraLease> {
-  if (paused) {
-    throw Object.assign(new Error("Camera bus is paused"), { name: "AbortError" });
-  }
+  // NOTE: we intentionally do NOT block on the legacy `paused` flag here.
+  // `pauseCameraConsumers()` is used by flows like FaceEnrollmentDialog to
+  // ask *other* consumers (PeekGuard, MoodDetector) to yield the device —
+  // then the same flow immediately calls `acquireCamera` to open it for
+  // itself. Blocking here would make enrollment always fail with
+  // "Camera is in use by another source" even though the device is free.
   const entry = pool[facing];
   if (entry.stopTimer) { clearTimeout(entry.stopTimer); entry.stopTimer = null; }
 

@@ -23,6 +23,8 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useLongPress } from "@/hooks/useLongPress";
 import { useNavigate } from "react-router-dom";
 import { useTheme } from "@/contexts/ThemeContext";
+import { resolveWallpaperStyle } from "@/lib/wallpapers";
+import DisappearGestureHandle from "@/components/chat/DisappearGestureHandle";
 import { supabase } from "@/integrations/supabase/client";
 import { playMessageSound, playCallSound } from "@/lib/sounds";
 import { hapticMedium, hapticMessageSent, hapticMessageReceived } from "@/lib/haptics";
@@ -103,6 +105,7 @@ const DISAPPEAR_OPTIONS = [
   { label: "30 seconds",  value: 30_000 },
   { label: "5 minutes",   value: 5 * 60_000 },
   { label: "1 hour",      value: 60 * 60_000 },
+  { label: "1 day",       value: 24 * 60 * 60_000 },
 ];
 const DEFAULT_DISAPPEAR_MS = 30_000;
 // No hard cap on messages — load 200 per page with infinite scroll.
@@ -196,8 +199,8 @@ const VoiceMessagePlayer = ({ src, isMine }: { src: string; isMine: boolean }) =
   return (
     <div className="flex items-center gap-2.5 min-w-[180px]">
       <audio ref={audioRef} src={src} preload="metadata" crossOrigin="anonymous" />
-      <button onClick={toggle} className="h-9 w-9 rounded-full bg-accent/60 flex items-center justify-center shrink-0 transition-colors hover:bg-accent active:scale-95">
-        {playing ? <Pause className="h-4 w-4 text-foreground" /> : <Play className="h-4 w-4 text-foreground ml-0.5" />}
+      <button onClick={toggle} aria-label={playing ? "Pause voice message" : "Play voice message"} className="h-9 w-9 rounded-full bg-accent/60 flex items-center justify-center shrink-0 transition-colors hover:bg-accent active:scale-95">
+        {playing ? <Pause className="h-4 w-4 text-foreground" aria-hidden="true" /> : <Play className="h-4 w-4 text-foreground ml-0.5" aria-hidden="true" />}
       </button>
       <div className="flex-1 space-y-1">
         <div className="flex items-end gap-[2px] h-5 cursor-pointer" onClick={seekTo}>
@@ -235,12 +238,14 @@ const PinnedMessageBanner = ({ msg, onJump }: { msg: DecryptedMessage; onJump: (
 const MessageBubble = ({
   msg, isMine, isDisappearing, isHighlighted, isActiveResult,
   repliedMsg, partnerName, userId,
+  isFirstInGroup, isLastInGroup, partnerAvatar,
   onReply, onLongPress, onPhotoView, formatTime,
   allReactions, mediaVisible,
 }: {
   msg: DecryptedMessage; isMine: boolean; isDisappearing: boolean;
   isHighlighted: boolean; isActiveResult: boolean;
   repliedMsg: DecryptedMessage | null; partnerName: string; userId: string;
+  isFirstInGroup: boolean; isLastInGroup: boolean; partnerAvatar: string | null;
   onReply: () => void; onLongPress: () => void;
   onPhotoView: (url: string) => void; formatTime: (iso: string) => string;
   allReactions?: { id: string; message_id: string; user_id: string; emoji: string; created_at: string }[]; mediaVisible?: boolean;
@@ -250,20 +255,32 @@ const MessageBubble = ({
     <motion.div id={`msg-${msg.id}`}
       initial={{ opacity: 0, y: 4 }} animate={{ opacity: isDisappearing ? 0.6 : 1, y: 0 }}
       transition={{ duration: 0.15, ease: "easeOut" }}
-      className={`flex ${isMine?"justify-end":"justify-start"} group py-[2px] ${
+      className={`flex ${isMine?"justify-end":"justify-start"} group ${isFirstInGroup ? "pt-2" : "pt-[1px]"} ${
         isActiveResult  ? "ring-2 ring-primary rounded-2xl"
         : isHighlighted ? "ring-1 ring-primary/40 rounded-2xl"
         : ""
       }`}>
-      <div className="flex items-end gap-1 max-w-[80%]" {...lph}>
+      <div className="flex items-end gap-1.5 max-w-[80%]" {...lph}>
         {isMine && (
-          <button onClick={onReply}
+          <button onClick={onReply} aria-label="Reply to this message"
             className="h-6 w-6 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all text-muted-foreground hover:text-foreground mb-1">
-            <Reply className="h-3 w-3" />
+            <Reply className="h-3 w-3" aria-hidden="true" />
           </button>
         )}
+        {/* Partner avatar — shown only on the first bubble of a consecutive
+            group; a same-width spacer keeps later bubbles in the group
+            aligned instead of the avatar repeating on every message. */}
+        {!isMine && (
+          isFirstInGroup ? (
+            <div className="h-6 w-6 rounded-full overflow-hidden shrink-0 mb-0.5 bg-muted flex items-center justify-center text-[10px] font-medium">
+              {partnerAvatar ? <img src={partnerAvatar} alt="" className="h-full w-full object-cover" /> : (partnerName?.[0]?.toUpperCase() || "?")}
+            </div>
+          ) : <div className="w-6 shrink-0" />
+        )}
         <div className={`rounded-2xl px-3 py-2 select-none ${
-          isMine ? "bg-foreground text-background rounded-br-md" : "bg-card border border-border/50 rounded-bl-md"
+          isMine
+            ? `bg-foreground text-background ${isLastInGroup ? "rounded-br-md" : "rounded-br-2xl"}`
+            : `bg-card border border-border/50 ${isLastInGroup ? "rounded-bl-md" : "rounded-bl-2xl"}`
         } ${isDisappearing ? "ring-1 ring-primary/20" : ""}`}>
           {repliedMsg && (
             <QuotedMessage content={repliedMsg.decryptedContent||"Message"}
@@ -328,9 +345,9 @@ const MessageBubble = ({
           <MessageReactions messageId={msg.id} userId={userId} isMine={isMine} allReactions={allReactions} />
         </div>
         {!isMine && (
-          <button onClick={onReply}
+          <button onClick={onReply} aria-label="Reply to this message"
             className="h-6 w-6 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all text-muted-foreground hover:text-foreground mb-1">
-            <Reply className="h-3 w-3" />
+            <Reply className="h-3 w-3" aria-hidden="true" />
           </button>
         )}
       </div>
@@ -386,7 +403,7 @@ const Chat = () => {
   const recordingTimerRef = useRef<ReturnType<typeof setInterval>|null>(null);
   // FIX: cancel flag for mic button race condition
   const recordingCancelledRef = useRef(false);
-  const { chatWallpaper, appName, appIcon } = useTheme();
+  const { chatWallpaper, colorMode, appName, appIcon } = useTheme();
   const { user } = useAuth();
   const { ready: e2eReady, encrypt, decrypt } = useE2E(user?.id, partnerId);
   const { toast } = useToast();
@@ -1217,8 +1234,14 @@ const Chat = () => {
               )}
             </div>
             <div>
-              <h1 className="text-sm font-semibold text-foreground leading-tight">
+              <h1 className="text-sm font-semibold text-foreground leading-tight flex items-center gap-1.5">
                 {partnerId ? partnerName : appName}
+                {disappearMode && (
+                  <span title={`Disappearing messages: ${DISAPPEAR_OPTIONS.find(o=>o.value===disappearMs)?.label ?? ""}`}
+                    className="inline-flex items-center gap-0.5 bg-primary/15 text-primary text-[9px] font-semibold px-1.5 py-0.5 rounded-full">
+                    <Timer className="h-2.5 w-2.5" /> ON
+                  </span>
+                )}
               </h1>
               <p className="text-[11px] text-muted-foreground leading-tight">
                 {partnerTyping?"typing...":partnerOnline?"🟢 online":e2eReady?"end-to-end encrypted":partnerId?"securing…":"Link a partner in settings"}
@@ -1322,8 +1345,18 @@ const Chat = () => {
         aria-live="polite"
         aria-relevant="additions"
         aria-label="Conversation messages"
-        className="flex-1 overflow-y-auto px-3 py-3 min-h-0"
-        style={chatWallpaper ? { background: chatWallpaper } : undefined}>
+        className="flex-1 overflow-y-auto px-3 py-3 min-h-0 transition-[background] duration-500"
+        style={(() => {
+          const wallpaperCss = chatWallpaper ? resolveWallpaperStyle(chatWallpaper, colorMode) : null;
+          if (disappearMode) {
+            // Layer a dark tint over the wallpaper (or stand alone if no
+            // wallpaper is set) — a fixed, deliberate visual cue that
+            // disappearing messages are on, mirroring Instagram's Vanish
+            // Mode darkening the whole screen while it's active.
+            return { background: `linear-gradient(rgba(0,0,0,0.25), rgba(0,0,0,0.25))${wallpaperCss ? `, ${wallpaperCss}` : ""}` };
+          }
+          return wallpaperCss ? { background: wallpaperCss } : undefined;
+        })()}>
         {hasMoreMessages && (
           <div className="flex justify-center mb-3">
             <button onClick={loadMoreMessages} disabled={loadingMore}
@@ -1345,7 +1378,7 @@ const Chat = () => {
               <span className="text-[10px] text-muted-foreground bg-muted/50 backdrop-blur-sm px-3 py-1 rounded-full">{group.date}</span>
             </div>
             <div className="space-y-0.5">
-              {group.items.map(item => {
+              {group.items.map((item, idx) => {
                 if (item.type==="call") {
                   const c = item.data;
                   return <CallEvent key={`call-${c.id}`} callType={c.call_type} status={c.status} direction={c.call_direction} durationSeconds={c.duration_seconds} createdAt={c.created_at} isMine={c.caller_id===user?.id} />;
@@ -1371,11 +1404,21 @@ const Chat = () => {
                 }
                 const msg = item.data;
                 const repliedMsg = msg.reply_to_id ? messages.find(m=>m.id===msg.reply_to_id)??null : null;
+                const prevItem = group.items[idx-1];
+                const nextItem = group.items[idx+1];
+                const prevMsg = prevItem?.type==="message" ? prevItem.data : null;
+                const nextMsg = nextItem?.type==="message" ? nextItem.data : null;
+                const GROUP_GAP_MS = 4*60*1000; // messages within 4 min of the same sender are visually grouped
+                const isFirstInGroup = !prevMsg || prevMsg.sender_id!==msg.sender_id
+                  || (new Date(msg.created_at).getTime() - new Date(prevMsg.created_at).getTime()) > GROUP_GAP_MS;
+                const isLastInGroup = !nextMsg || nextMsg.sender_id!==msg.sender_id
+                  || (new Date(nextMsg.created_at).getTime() - new Date(msg.created_at).getTime()) > GROUP_GAP_MS;
                 return (
                   <MessageBubble key={msg.id} msg={msg} isMine={msg.sender_id===user?.id}
                     isDisappearing={!!msg.disappear_at&&msg.disappear_at!=="pending"}
                     isHighlighted={searchResults.includes(msg.id)} isActiveResult={searchResults[searchIndex]===msg.id}
                     repliedMsg={repliedMsg} partnerName={partnerName} userId={user?.id||""}
+                    isFirstInGroup={isFirstInGroup} isLastInGroup={isLastInGroup} partnerAvatar={partnerAvatar}
                     onReply={() => { setReplyTo(msg); inputRef.current?.focus(); }}
                     onLongPress={() => setContextMenuMsg(msg)}
                     onPhotoView={url=>setViewingPhoto(url)}
@@ -1401,10 +1444,21 @@ const Chat = () => {
       {/* Attach menu */}
       <AnimatePresence>
         {showAttach && !isRecording && (
-          <motion.div initial={{ opacity:0,y:8 }} animate={{ opacity:1,y:0 }} exit={{ opacity:0,y:8 }} className="px-4 pb-1 flex gap-2">
-            <button onClick={() => imageInputRef.current?.click()} className="flex items-center gap-1.5 bg-muted/60 rounded-full px-3 py-2 text-xs"><ImageIcon className="h-3.5 w-3.5 text-muted-foreground" /> Photo</button>
-            <button onClick={() => cameraInputRef.current?.click()} className="flex items-center gap-1.5 bg-muted/60 rounded-full px-3 py-2 text-xs"><Camera className="h-3.5 w-3.5 text-muted-foreground" /> Camera</button>
-            <button onClick={() => fileInputRef.current?.click()} className="flex items-center gap-1.5 bg-muted/60 rounded-full px-3 py-2 text-xs"><FileText className="h-3.5 w-3.5 text-muted-foreground" /> File</button>
+          <motion.div initial={{ opacity:0,y:8,scale:0.98 }} animate={{ opacity:1,y:0,scale:1 }} exit={{ opacity:0,y:8,scale:0.98 }}
+            transition={{ type: "spring", stiffness: 380, damping: 28 }}
+            className="mx-4 mb-2 bg-card border border-border/60 rounded-2xl p-3 shadow-sm flex gap-3">
+            {[
+              { label: "Photo",  icon: ImageIcon, color: "bg-blue-500",   onClick: () => imageInputRef.current?.click() },
+              { label: "Camera", icon: Camera,    color: "bg-rose-500",   onClick: () => cameraInputRef.current?.click() },
+              { label: "File",   icon: FileText,  color: "bg-violet-500", onClick: () => fileInputRef.current?.click() },
+            ].map(({ label, icon: Icon, color, onClick }) => (
+              <button key={label} onClick={onClick} className="flex flex-col items-center gap-1.5 flex-1 active:scale-95 transition-transform">
+                <span className={`h-11 w-11 rounded-full flex items-center justify-center ${color}`}>
+                  <Icon className="h-5 w-5 text-white" />
+                </span>
+                <span className="text-[11px] text-muted-foreground">{label}</span>
+              </button>
+            ))}
           </motion.div>
         )}
       </AnimatePresence>
@@ -1433,10 +1487,29 @@ const Chat = () => {
 
       {/* Input area */}
       <div className="px-3 pb-3 pt-1.5 safe-bottom bg-background shrink-0">
+        <div className="flex justify-center">
+          <DisappearGestureHandle
+            steps={DISAPPEAR_OPTIONS}
+            active={disappearMode}
+            currentMs={disappearMs}
+            onCommit={(ms) => {
+              if (ms === 0) { setDisappearMode(false); }
+              else { setDisappearMs(ms); setDisappearMode(true); }
+            }}
+          />
+        </div>
         {isRecording ? (
           <motion.div initial={{ opacity:0,scale:0.97 }} animate={{ opacity:1,scale:1 }}
             className="flex items-center gap-3 bg-destructive/5 rounded-full border border-destructive/10 px-4 py-2.5">
-            <motion.div animate={{ opacity:[1,0.3,1] }} transition={{ repeat:Infinity,duration:1 }} className="h-2 w-2 rounded-full bg-destructive shrink-0" />
+            <div className="flex items-end gap-0.5 h-4 shrink-0" aria-hidden="true">
+              {[0,1,2,3].map(i => (
+                <motion.span key={i}
+                  className="w-[3px] rounded-full bg-destructive inline-block"
+                  animate={{ height: ["6px", "16px", "6px"] }}
+                  transition={{ duration: 0.9, repeat: Infinity, delay: i * 0.15, ease: "easeInOut" }}
+                />
+              ))}
+            </div>
             <span className="text-sm font-medium text-destructive flex-1">{formatRecTime(recordingTime)}</span>
             <button onClick={cancelRecording} aria-label="Cancel voice recording" className="h-8 w-8 rounded-full bg-muted flex items-center justify-center"><Trash2 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" /></button>
             <button onClick={stopRecording} aria-label="Send voice recording" className="h-8 w-8 rounded-full bg-foreground flex items-center justify-center"><Send className="h-3.5 w-3.5 text-background" aria-hidden="true" /></button>
@@ -1476,7 +1549,8 @@ const Chat = () => {
                 <Mic className="h-4 w-4 text-background" aria-hidden="true" />
               </button>
             )}
-            <HubButton onClick={() => setShowGridMenu(!showGridMenu)} isOpen={showGridMenu} />
+            <HubButton onClick={() => setShowGridMenu(!showGridMenu)} isOpen={showGridMenu}
+              onLongPress={message.trim() ? () => { setShowGridMenu(false); setShowSchedulePicker(true); } : undefined} />
           </div>
         )}
       </div>

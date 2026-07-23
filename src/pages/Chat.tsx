@@ -1552,44 +1552,54 @@ const Chat = () => {
             <button onClick={stopRecording} aria-label="Send voice recording" className="h-8 w-8 rounded-full bg-foreground flex items-center justify-center"><Send className="h-3.5 w-3.5 text-background" aria-hidden="true" /></button>
           </motion.div>
         ) : (
-          <div className="flex items-center gap-1.5">
-            <div className="flex-1 flex items-center gap-1 bg-muted/30 rounded-full border border-border/30 px-2 py-1">
+          <div className="flex items-end gap-2">
+            <div className="flex-1 flex items-end gap-1 bg-muted/40 rounded-3xl border border-border/40 px-2 py-1.5 backdrop-blur-md shadow-sm">
               <button onClick={() => setShowAttach(!showAttach)}
                 aria-label="Attachments"
                 aria-expanded={showAttach}
-                className="h-8 w-8 rounded-full flex items-center justify-center shrink-0 text-muted-foreground hover:text-foreground transition-colors">
-                <Paperclip className="h-4 w-4" aria-hidden="true" />
+                className="h-9 w-9 rounded-full flex items-center justify-center shrink-0 text-muted-foreground hover:text-foreground transition-colors self-end">
+                <Paperclip className="h-[18px] w-[18px]" aria-hidden="true" />
               </button>
-              <input ref={inputRef} type="text" value={message}
+              <textarea
+                ref={inputRef as unknown as React.RefObject<HTMLTextAreaElement>}
+                value={message}
+                rows={1}
                 aria-label="Message"
-                onChange={e => { setMessage(e.target.value); broadcastTyping(); if(editingMsg) setEditText(e.target.value); }}
-                onKeyDown={e => e.key==="Enter" && handleSend()}
-                placeholder={editingMsg?"Edit message...":replyTo?"Reply...":"Message"}
-                className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground/60 py-1.5" />
+                onChange={e => {
+                  setMessage(e.target.value);
+                  broadcastTyping();
+                  if (editingMsg) setEditText(e.target.value);
+                  const el = e.currentTarget;
+                  el.style.height = "auto";
+                  el.style.height = Math.min(el.scrollHeight, 140) + "px";
+                }}
+                onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+                placeholder={editingMsg ? "Edit message..." : replyTo ? "Reply..." : "Message"}
+                className="flex-1 bg-transparent text-[15px] leading-[1.35] outline-none placeholder:text-muted-foreground/60 py-2 resize-none max-h-[140px] min-h-[24px] w-full"
+              />
             </div>
             {message.trim() ? (
               <motion.button initial={{ scale:0 }} animate={{ scale:1 }} onClick={handleSend}
                 aria-label={editingMsg ? "Save edit" : "Send message"}
-                className="h-10 w-10 rounded-full bg-foreground flex items-center justify-center shrink-0">
-                {editingMsg ? <Check className="h-4 w-4 text-background" aria-hidden="true" /> : <Send className="h-4 w-4 text-background" aria-hidden="true" />}
+                className="h-11 w-11 rounded-full bg-primary flex items-center justify-center shrink-0 shadow-md">
+                {editingMsg ? <Check className="h-[18px] w-[18px] text-primary-foreground" aria-hidden="true" /> : <Send className="h-[18px] w-[18px] text-primary-foreground" aria-hidden="true" />}
               </motion.button>
             ) : (
               <button
                 onPointerDown={startRecording}
                 onPointerUp={stopRecording}
                 aria-label="Hold to record voice message"
-                // Fix #Bug4: pointer events unify touch+mouse — no double-fire on Android/iOS.
-                // onMouseDown/onTouchStart both fired on mobile causing startRecording() twice.
                 onPointerLeave={() => { if (isRecording) cancelRecording(); }}
                 style={{ touchAction: "none" }}
-                className="h-10 w-10 rounded-full bg-foreground flex items-center justify-center shrink-0 active:scale-95 transition-transform">
-                <Mic className="h-4 w-4 text-background" aria-hidden="true" />
+                className="h-11 w-11 rounded-full bg-foreground flex items-center justify-center shrink-0 active:scale-95 transition-transform">
+                <Mic className="h-[18px] w-[18px] text-background" aria-hidden="true" />
               </button>
             )}
             <HubButton onClick={() => setShowGridMenu(!showGridMenu)} isOpen={showGridMenu}
               onLongPress={message.trim() ? () => { setShowGridMenu(false); setShowSchedulePicker(true); } : undefined} />
           </div>
         )}
+
       </div>
 
       {/* Hidden inputs */}

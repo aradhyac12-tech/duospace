@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { supabase } from "@/integrations/supabase/client";
+import { invokeEdgeFunction } from "@/lib/edgeFunction";
 import { buildAuthRedirectUri, getAuthPlatform, isNativePlatform } from "@/lib/auth-redirect";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -347,7 +348,29 @@ const Auth = () => {
             }
           } catch (e) { logWarn("auth.signup", "auto-link skipped", { err: supaErr(e) }, traceId); }
         }
-        toast({ title: "Check your email", description: "We sent you a confirmation link." });
+
+        // AUTH-EMAIL FIX: this project has no SMTP/email provider configured,
+        // so Supabase's own confirmation email never arrives and accounts
+        // used to get stuck forever waiting on it. When signUp() comes back
+        // needing confirmation (no session yet), immediately finish it
+        // server-side instead of waiting on that email.
+        if (!data.session && data.user?.id) {
+          try {
+            const tokens = await invokeEdgeFunction<{
+              access_token: string; refresh_token: string;
+            }>("complete-signup", { body: { user_id: data.user.id, email: email.trim() } });
+            const { error: sessErr } = await supabase.auth.setSession(tokens);
+            if (sessErr) throw sessErr;
+            toast({ title: "Account created", description: "Welcome to DuoSpace." });
+          } catch (completeErr) {
+            logError("auth.signup", "complete-signup failed", {
+              request_id: traceId, email_hash: emailHash, err: supaErr(completeErr),
+            }, traceId);
+            toast({ title: "Check your email", description: "We sent you a confirmation link." });
+          }
+        } else {
+          toast({ title: "Account created", description: "Welcome to DuoSpace." });
+        }
       }
 
     } catch (err: unknown) {

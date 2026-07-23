@@ -8,6 +8,7 @@ import { useDailyCall } from "@/hooks/useDailyCall";
 import { useToast } from "@/hooks/use-toast";
 import LipReadingOverlay from "@/components/LipReadingOverlay";
 import { pauseCameraConsumers, resumeCameraConsumers } from "@/lib/cameraBus";
+import { invokeEdgeFunction } from "@/lib/edgeFunction";
 
 interface NetworkInformation {
   downlink?: number;
@@ -172,15 +173,13 @@ const Calls = () => {
     // enrollment streams so Daily.co can claim the device cleanly.
     pauseCameraConsumers("call-start");
     try {
-      const { data, error: fnError } = await supabase.functions.invoke("daily-call", {
+      const data = await invokeEdgeFunction<{ name: string; url: string }>("daily-call", {
         body: { action: "create-room", roomName: `duo-${user.id.slice(0, 8)}-${Date.now()}` },
       });
-      if (fnError || data?.error) throw new Error(data?.error || fnError?.message || "Failed to create room");
 
-      const { data: tokenData, error: tokenError } = await supabase.functions.invoke("daily-call", {
+      const tokenData = await invokeEdgeFunction<{ token: string }>("daily-call", {
         body: { action: "get-token", roomName: data.name },
       });
-      if (tokenError || tokenData?.error) throw new Error(tokenData?.error || tokenError?.message || "Failed to get token");
 
       // Save call to history — Fix #4: store full room URL so receiver can join
       callStartTimeRef.current = new Date();

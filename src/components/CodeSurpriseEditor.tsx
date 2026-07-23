@@ -209,14 +209,14 @@ const CodeSurpriseEditor = ({ partnerId }: CodeSurpriseEditorProps) => {
               <p className="text-[10px] text-muted-foreground">{s.views_used}/{s.max_views} views • {s.is_active ? "Active" : "Paused"}</p>
             </div>
             <div className="flex gap-1">
-              <button onClick={() => toggleActive(s)} className={`h-7 w-7 rounded-full flex items-center justify-center ${s.is_active ? "bg-primary/10" : "bg-muted"}`}>
-                <Eye className={`h-3 w-3 ${s.is_active ? "text-primary" : "text-muted-foreground"}`} />
+              <button onClick={() => toggleActive(s)} aria-label={s.is_active ? "Deactivate surprise" : "Activate surprise"} className={`h-7 w-7 rounded-full flex items-center justify-center ${s.is_active ? "bg-primary/10" : "bg-muted"}`}>
+                <Eye className={`h-3 w-3 ${s.is_active ? "text-primary" : "text-muted-foreground"}`} aria-hidden="true" />
               </button>
-              <button onClick={() => editSurprise(s)} className="h-7 w-7 rounded-full bg-muted flex items-center justify-center">
-                <Code2 className="h-3 w-3 text-muted-foreground" />
+              <button onClick={() => editSurprise(s)} aria-label="Edit surprise" className="h-7 w-7 rounded-full bg-muted flex items-center justify-center">
+                <Code2 className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
               </button>
-              <button onClick={() => deleteSurprise(s.id)} className="h-7 w-7 rounded-full bg-destructive/10 flex items-center justify-center">
-                <X className="h-3 w-3 text-destructive" />
+              <button onClick={() => deleteSurprise(s.id)} aria-label="Delete surprise" className="h-7 w-7 rounded-full bg-destructive/10 flex items-center justify-center">
+                <X className="h-3 w-3 text-destructive" aria-hidden="true" />
               </button>
             </div>
           </div>
@@ -242,8 +242,8 @@ const CodeSurpriseEditor = ({ partnerId }: CodeSurpriseEditorProps) => {
             className="fixed inset-0 z-[80] bg-background flex flex-col"
           >
             <div className="safe-top px-4 pt-3 pb-2 flex items-center justify-between border-b border-border/30">
-              <button onClick={() => setShowEditor(false)} className="h-8 w-8 rounded-full bg-muted flex items-center justify-center">
-                <X className="h-4 w-4 text-muted-foreground" />
+              <button onClick={() => setShowEditor(false)} aria-label="Close editor" className="h-8 w-8 rounded-full bg-muted flex items-center justify-center">
+                <X className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
               </button>
               <Input value={title} onChange={(e) => setTitle(e.target.value)}
                 className="mx-3 h-8 rounded-full text-sm text-center flex-1" placeholder="Title" />
@@ -345,8 +345,8 @@ const CodeSurpriseEditor = ({ partnerId }: CodeSurpriseEditorProps) => {
                   className="absolute inset-0 z-10 bg-background flex flex-col">
                   <div className="safe-top px-4 pt-3 pb-2 flex items-center justify-between">
                     <p className="text-sm font-medium">Preview</p>
-                    <button onClick={() => setShowPreview(false)} className="h-8 w-8 rounded-full bg-muted flex items-center justify-center">
-                      <X className="h-4 w-4 text-muted-foreground" />
+                    <button onClick={() => setShowPreview(false)} aria-label="Close preview" className="h-8 w-8 rounded-full bg-muted flex items-center justify-center">
+                      <X className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
                     </button>
                   </div>
                   <div className="flex-1 p-4">

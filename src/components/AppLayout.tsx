@@ -1,5 +1,5 @@
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useRef } from "react";
 import { useSwipeNav } from "@/hooks/useSwipeNav";
 import { AnimatePresence, motion } from "framer-motion";
 
@@ -17,8 +17,6 @@ import { useTheme } from "@/contexts/ThemeContext";
 import { useSessionGuard } from "@/hooks/useSessionGuard";
 import { useToast } from "@/hooks/use-toast";
 import { logError } from "@/lib/telemetry";
-import { supabase } from "@/integrations/supabase/client";
-import { computeDeviceFingerprint, collectDeviceInfo } from "@/lib/deviceFingerprint";
 
 const AppLayout = () => {
   const { isAppLocked, setIsAppLocked, appSettings } = useTheme();
@@ -89,24 +87,12 @@ const AppLayout = () => {
     onSessionConflict: handleSessionConflict,
   });
 
-  // Instagram-style new-device alerts: only on real SIGNED_IN, not token refresh or initial session.
-  useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event !== "SIGNED_IN") return;
-      (async () => {
-        try {
-          const fingerprint = await computeDeviceFingerprint();
-          const info = collectDeviceInfo();
-          await supabase.functions.invoke("notify-signin", {
-            body: { fingerprint, ...info },
-          });
-        } catch (err) {
-          logError("AppLayout", "notify-signin failed", err);
-        }
-      })();
-    });
-    return () => subscription.unsubscribe();
-  }, []);
+  // NOTE: new-device sign-in alerts are handled once, centrally, by
+  // notifyCurrentDeviceSignIn() (src/lib/signinAlert.ts) from useAuth.tsx's
+  // SIGNED_IN handler. A second raw supabase.functions.invoke("notify-signin")
+  // used to live here too, so every sign-in fired the edge function twice —
+  // once through the hardened, deduped helper and once through this bare
+  // call with no retry/timeout handling and no in-flight guard.
 
   return (
     <GroicProvider>

@@ -85,6 +85,14 @@ const Settings = () => {
   const [importingWhatsApp, setImportingWhatsApp] = useState(false);
   const [importProgress, setImportProgress]       = useState("");
   const whatsappFileRef = useRef<HTMLInputElement>(null);
+  // WA-08 FIX: WhatsApp exports only give a raw contact name (often just a
+  // phone number for whichever side wasn't saved). Ask the user which of
+  // the distinct names in the file is them, so imported messages can be
+  // labeled "You" / the partner's name instead of the raw export string.
+  const [waSenderPick, setWaSenderPick] = useState<{
+    senders: string[];
+    parsed: { sender: string; content: string; timestamp: Date }[];
+  } | null>(null);
   const [searchQuery, setSearchQuery]             = useState("");
   const [showThemeStudio, setShowThemeStudio]     = useState(false);
 
@@ -328,6 +336,46 @@ const Settings = () => {
     }
   };
 
+  // WA-08 FIX: shared batch-insert used both for the no-ambiguity path and
+  // after the user picks which sender name is them from waSenderPick.
+  const runWhatsAppImport = async (
+    parsed: { sender: string; content: string; timestamp: Date }[],
+    selfSender: string | null,
+  ) => {
+    if (!user) return;
+    setImportingWhatsApp(true);
+    setImportProgress(`Importing ${parsed.length} messages…`);
+    const BATCH = 100;
+    let inserted = 0;
+    let failed = 0;
+    for (let i = 0; i < parsed.length; i += BATCH) {
+      const batch = parsed.slice(i, i + BATCH).map(msg => ({
+        owner_id: user.id,
+        sender_name: msg.sender,
+        content: msg.content,
+        original_timestamp: msg.timestamp.toISOString(),
+        is_self: selfSender !== null && msg.sender === selfSender,
+      }));
+      const { error: batchErr } = await supabase.from("imported_chats" as any).insert(batch);
+      if (batchErr) {
+        failed += batch.length;
+        if (import.meta.env.DEV) { console.error(`[WA Import] Batch ${i}–${i + BATCH} failed:`, batchErr.message); }
+      } else {
+        inserted += batch.length;
+      }
+      setImportProgress(`Importing… ${Math.min(i + BATCH, parsed.length)}/${parsed.length}`);
+    }
+
+    if (failed > 0 && inserted === 0) {
+      toast({ title: "Import failed", description: `All ${failed} messages failed to save. Check your connection.`, variant: "destructive" });
+    } else if (failed > 0) {
+      toast({ title: `Partially imported`, description: `${inserted} saved, ${failed} failed. Try again to retry missing batches.`, variant: "default" });
+    } else {
+      toast({ title: `Imported ${inserted} messages 📱`, description: "Scroll up in chat to see them." });
+    }
+    setImportingWhatsApp(false); setImportProgress("");
+  };
+
   const settingsItems = [
     { key:"biometricLock" as const, icon:Fingerprint, label:"App Lock",      desc:"Face ID / Fingerprint + PIN fallback" },
     { key:"notifications" as const, icon:Bell,        label:"Notifications",  desc:"Message & call alerts" },
@@ -365,6 +413,25 @@ const Settings = () => {
       </header>
 
       <div className="px-5 space-y-6 pt-5">
+
+        {/* Account */}
+        <section hidden={!matches("account sign out logout email username profile handle")}>
+          <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-2.5 sticky top-[112px] z-10 bg-background/85 backdrop-blur-sm py-1 -mx-1 px-1 rounded">Account</p>
+          <p className="text-xs text-muted-foreground mb-2">{user?.email}</p>
+          <div className="bg-card rounded-2xl border border-border/60 p-4 space-y-2 mb-2">
+            <p className="text-[11px] font-medium text-muted-foreground">Username</p>
+            <div className="flex gap-2">
+              <Input value={myUsername} onChange={e=>setMyUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_.]/g,""))}
+                placeholder="username" className="h-9 rounded-xl flex-1 text-sm" />
+              <Button onClick={saveUsername} size="sm" className="rounded-xl bg-foreground text-background h-9 px-4 text-xs">Save</Button>
+            </div>
+            <p className="text-[10px] text-muted-foreground">Letters, numbers, . and _ only. Min 3 characters.</p>
+          </div>
+          <button onClick={async () => { hapticMedium(); await supabase.auth.signOut(); }}
+            className="w-full bg-card rounded-xl border border-border/60 p-3 text-sm text-destructive text-center active:scale-[0.98] transition-transform">
+            Sign Out
+          </button>
+        </section>
 
         {/* Partner */}
         <section hidden={!matches("partner invite link username code request connect unlink")}>
@@ -435,8 +502,8 @@ const Settings = () => {
 
         {/* Devices — QR sign-in on another device + QR-based signup invite */}
         {user && (
-          <section hidden={!matches("device qr scan sign in on another new account invite signup pair pairing")}>
-            <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-2.5 sticky top-[112px] z-10 bg-background/85 backdrop-blur-sm py-1 -mx-1 px-1 rounded">Devices</p>
+          <section hidden={!matches("device qr scan sign in on another new account invite signup pair pairing recent history session where signed")}>
+            <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-2.5 sticky top-[112px] z-10 bg-background/85 backdrop-blur-sm py-1 -mx-1 px-1 rounded">Devices & Sign-in</p>
             <div className="space-y-2">
               <button onClick={() => { hapticLight(); setShowDeviceQr(true); }}
                 className="w-full bg-card rounded-2xl border border-border/60 p-4 flex items-center gap-3 active:scale-[0.98] transition-transform">
@@ -477,8 +544,46 @@ const Settings = () => {
                 </button>
               )}
             </div>
+            <p className="text-[11px] font-medium text-muted-foreground mt-4 mb-2">Recent devices</p>
+            <RecentDevices />
           </section>
         )}
+
+        {/* Security & Privacy */}
+        <section hidden={!matches("security privacy lock pin biometric fingerprint face haptic notification mood")}>
+          <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-2.5 sticky top-[112px] z-10 bg-background/85 backdrop-blur-sm py-1 -mx-1 px-1 rounded">Security & Privacy</p>
+          <div className="bg-card rounded-2xl border border-border/60 divide-y divide-border/40">
+            {settingsItems.map(item => (
+              <div key={item.key} className="flex items-center gap-3 px-4 py-3">
+                <item.icon className="h-4 w-4 text-muted-foreground shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium">{item.label}</p>
+                  <p className="text-[11px] text-muted-foreground">{item.desc}</p>
+                </div>
+                <Switch checked={appSettings[item.key]||false} onCheckedChange={v => {
+                  hapticLight(); updateSetting(item.key,v);
+                  if (item.key==="biometricLock" && v && !storage.get("duo-lock-pin")) setShowPinDialog(true);
+                  // Fix #Bug11: sync to the localStorage key MoodDetector checks on startup
+                  if (item.key==="moodDetection") storage.set("mood-detection-enabled", v ? "true" : "false");
+                }} />
+              </div>
+            ))}
+            <div className="flex items-center gap-3 px-4 py-3">
+              <KeyRound className="h-4 w-4 text-muted-foreground shrink-0" />
+              <div className="flex-1 min-w-0"><p className="text-sm font-medium">Change PIN</p><p className="text-[11px] text-muted-foreground">Update your 6-digit lock PIN</p></div>
+              <button onClick={() => { setPinInput(""); setPinStep("enter"); setPinFirst(""); setShowPinDialog(true); }}
+                className="h-7 px-3 rounded-full bg-muted text-[11px] text-foreground">Change</button>
+            </div>
+            {appSettings.peekGuard && (
+              <div className="flex items-center gap-3 px-4 py-3">
+                <Scan className="h-4 w-4 text-muted-foreground shrink-0" />
+                <div className="flex-1 min-w-0"><p className="text-sm font-medium">Peek Guard setup</p><p className="text-[11px] text-muted-foreground">Enroll face, sensitivity & triggers</p></div>
+                <button onClick={() => { hapticLight(); setShowPeekConfig(true); }}
+                  className="h-7 px-3 rounded-full bg-muted text-[11px] text-foreground">Configure</button>
+              </div>
+            )}
+          </div>
+        </section>
 
         {/* Appearance */}
         <section hidden={!matches("appearance theme color wallpaper icon name dark light")}>
@@ -600,46 +705,6 @@ const Settings = () => {
                 ))}
               </div>
             </div>
-          </div>
-        </section>
-
-        {/* Security */}
-        <section hidden={!matches("device sign in recent history session where signed")}>
-          <RecentDevices />
-        </section>
-
-        <section hidden={!matches("security privacy lock pin biometric fingerprint face haptic notification mood")}>
-          <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-2.5 sticky top-[112px] z-10 bg-background/85 backdrop-blur-sm py-1 -mx-1 px-1 rounded">Security & Privacy</p>
-          <div className="bg-card rounded-2xl border border-border/60 divide-y divide-border/40">
-            {settingsItems.map(item => (
-              <div key={item.key} className="flex items-center gap-3 px-4 py-3">
-                <item.icon className="h-4 w-4 text-muted-foreground shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium">{item.label}</p>
-                  <p className="text-[11px] text-muted-foreground">{item.desc}</p>
-                </div>
-                <Switch checked={appSettings[item.key]||false} onCheckedChange={v => {
-                  hapticLight(); updateSetting(item.key,v);
-                  if (item.key==="biometricLock" && v && !storage.get("duo-lock-pin")) setShowPinDialog(true);
-                  // Fix #Bug11: sync to the localStorage key MoodDetector checks on startup
-                  if (item.key==="moodDetection") storage.set("mood-detection-enabled", v ? "true" : "false");
-                }} />
-              </div>
-            ))}
-            <div className="flex items-center gap-3 px-4 py-3">
-              <KeyRound className="h-4 w-4 text-muted-foreground shrink-0" />
-              <div className="flex-1 min-w-0"><p className="text-sm font-medium">Change PIN</p><p className="text-[11px] text-muted-foreground">Update your 6-digit lock PIN</p></div>
-              <button onClick={() => { setPinInput(""); setPinStep("enter"); setPinFirst(""); setShowPinDialog(true); }}
-                className="h-7 px-3 rounded-full bg-muted text-[11px] text-foreground">Change</button>
-            </div>
-            {appSettings.peekGuard && (
-              <div className="flex items-center gap-3 px-4 py-3">
-                <Scan className="h-4 w-4 text-muted-foreground shrink-0" />
-                <div className="flex-1 min-w-0"><p className="text-sm font-medium">Peek Guard setup</p><p className="text-[11px] text-muted-foreground">Enroll face, sensitivity & triggers</p></div>
-                <button onClick={() => { hapticLight(); setShowPeekConfig(true); }}
-                  className="h-7 px-3 rounded-full bg-muted text-[11px] text-foreground">Configure</button>
-              </div>
-            )}
           </div>
         </section>
 
@@ -821,65 +886,67 @@ const Settings = () => {
                   setImportingWhatsApp(false); e.target.value = ""; return;
                 }
 
-                // ── Insert in batches with per-batch error checking ──────────
-                // WA-05 FIX: Check each batch result. Previous code ignored errors,
-                // so a mid-import failure silently dropped all remaining batches while
-                // showing the full parsed count as successfully imported.
-                setImportProgress(`Importing ${parsed.length} messages…`);
-                const BATCH = 100;
-                let inserted = 0;
-                let failed = 0;
-                for (let i = 0; i < parsed.length; i += BATCH) {
-                  const batch = parsed.slice(i, i + BATCH).map(msg => ({
-                    owner_id: user.id,
-                    sender_name: msg.sender,
-                    content: msg.content,
-                    original_timestamp: msg.timestamp.toISOString(),
-                  }));
-                  const { error: batchErr } = await supabase.from("imported_chats" as any).insert(batch);
-                  if (batchErr) {
-                    failed += batch.length;
-                    if (import.meta.env.DEV) { console.error(`[WA Import] Batch ${i}–${i + BATCH} failed:`, batchErr.message); } /* AUDIT FIX #16 */
-                  } else {
-                    inserted += batch.length;
-                  }
-                  setImportProgress(`Importing… ${Math.min(i + BATCH, parsed.length)}/${parsed.length}`);
+                // WA-08 FIX: figure out who's who before inserting. If there are
+                // 2+ distinct sender names, ask the user which one is them so we
+                // can tag each row (is_self) instead of showing the raw export
+                // name forever. With only one distinct name there's nothing to
+                // disambiguate, so skip straight to import.
+                const distinctSenders = Array.from(new Set(parsed.map(p => p.sender)));
+                if (distinctSenders.length > 1) {
+                  setWaSenderPick({ senders: distinctSenders, parsed });
+                  setImportingWhatsApp(false);
+                  e.target.value = "";
+                  return;
                 }
-
-                if (failed > 0 && inserted === 0) {
-                  toast({ title: "Import failed", description: `All ${failed} messages failed to save. Check your connection.`, variant: "destructive" });
-                } else if (failed > 0) {
-                  toast({ title: `Partially imported`, description: `${inserted} saved, ${failed} failed. Try again to retry missing batches.`, variant: "default" });
-                } else {
-                  toast({ title: `Imported ${inserted} messages 📱`, description: "Scroll up in chat to see them." });
-                }
+                await runWhatsAppImport(parsed, null);
               } catch (err: unknown) {
                 toast({ title: "Import failed", description: (err instanceof Error ? err.message : String(err)), variant: "destructive" });
+                setImportingWhatsApp(false); setImportProgress("");
               }
-              setImportingWhatsApp(false); setImportProgress(""); e.target.value = "";
+              e.target.value = "";
             }} />
+          {/* WA-08 FIX: let the user say which raw export name is them, so
+              imported messages show "You" / the partner's name instead of
+              whatever WhatsApp had saved (often just a phone number). */}
+          <Dialog open={!!waSenderPick} onOpenChange={(open) => { if (!open) setWaSenderPick(null); }}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Which one is you?</DialogTitle>
+                <DialogDescription>
+                  This chat has messages from {waSenderPick?.senders.length} names. Pick the one that's you
+                  so we can label the chat correctly for both of you.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="flex flex-col gap-2 py-2">
+                {waSenderPick?.senders.map((name) => (
+                  <button
+                    key={name}
+                    onClick={() => {
+                      const pick = waSenderPick;
+                      setWaSenderPick(null);
+                      if (pick) runWhatsAppImport(pick.parsed, name);
+                    }}
+                    className="w-full text-left px-4 py-3 rounded-xl bg-muted/50 border border-border/60 active:scale-[0.98] transition-transform"
+                  >
+                    <p className="text-sm font-medium truncate">{name}</p>
+                  </button>
+                ))}
+              </div>
+              <DialogFooter>
+                <Button variant="ghost" onClick={() => {
+                  const pick = waSenderPick;
+                  setWaSenderPick(null);
+                  // Skip disambiguation — import without tagging anyone as "you".
+                  if (pick) runWhatsAppImport(pick.parsed, null);
+                }}>
+                  Skip / not sure
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </section>
 
         <CodeSurpriseEditor partnerId={currentPartner} />
-
-        {/* Account (includes username — was a separate section, folded in here) */}
-        <section className="pb-4" hidden={!matches("account sign out logout email username profile handle")}>
-          <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-2.5 sticky top-[112px] z-10 bg-background/85 backdrop-blur-sm py-1 -mx-1 px-1 rounded">Account</p>
-          <p className="text-xs text-muted-foreground mb-2">{user?.email}</p>
-          <div className="bg-card rounded-2xl border border-border/60 p-4 space-y-2 mb-2">
-            <p className="text-[11px] font-medium text-muted-foreground">Username</p>
-            <div className="flex gap-2">
-              <Input value={myUsername} onChange={e=>setMyUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_.]/g,""))}
-                placeholder="username" className="h-9 rounded-xl flex-1 text-sm" />
-              <Button onClick={saveUsername} size="sm" className="rounded-xl bg-foreground text-background h-9 px-4 text-xs">Save</Button>
-            </div>
-            <p className="text-[10px] text-muted-foreground">Letters, numbers, . and _ only. Min 3 characters.</p>
-          </div>
-          <button onClick={async () => { hapticMedium(); await supabase.auth.signOut(); }}
-            className="w-full bg-card rounded-xl border border-border/60 p-3 text-sm text-destructive text-center active:scale-[0.98] transition-transform">
-            Sign Out
-          </button>
-        </section>
       </div>
 
       {/* PIN Setup Dialog */}

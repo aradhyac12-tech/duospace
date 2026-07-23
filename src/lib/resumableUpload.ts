@@ -15,6 +15,7 @@
 import { supabase } from "@/integrations/supabase/client";
 import { withRetry } from "@/lib/networkState";
 import { logError, logInfo } from "@/lib/telemetry";
+import { invokeEdgeFunction } from "@/lib/edgeFunction";
 
 const DEFAULT_CHUNK_SIZE = 1024 * 1024; // 1 MB
 
@@ -101,15 +102,16 @@ export async function resumableUpload(opts: ResumableUploadOptions): Promise<Res
     onProgress?.(uploadedBytes, totalSize);
   }
 
-  // Server-side reassembly
+  // Server-side reassembly. invokeEdgeFunction already retries once on
+  // transport failure only (never on a real 4xx/5xx from the function,
+  // since finalize isn't safely repeatable if it partially reassembled).
   logInfo("resumable", `finalizing ${objectPath} (${totalChunks} chunks)`);
-  const { data: finalized, error: finErr } = await supabase.functions.invoke("finalize-upload", {
-    body: { bucket, objectPath, totalChunks, contentType },
-  });
-  if (finErr) {
-    logError("resumable", "finalize failed", finErr);
-    throw finErr;
+  try {
+    return await invokeEdgeFunction<ResumableUploadResult>("finalize-upload", {
+      body: { bucket, objectPath, totalChunks, contentType },
+    });
+  } catch (err) {
+    logError("resumable", "finalize failed", err);
+    throw err;
   }
-
-  return finalized as ResumableUploadResult;
 }

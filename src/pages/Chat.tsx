@@ -33,6 +33,7 @@ import { useE2E } from "@/hooks/useE2E";
 import storage from "@/lib/storage";
 import { useDailyCall } from "@/hooks/useDailyCall";
 import { useToast } from "@/hooks/use-toast";
+import { invokeEdgeFunction } from "@/lib/edgeFunction";
 import { logError, logWarn } from "@/lib/telemetry";
 import { callRoomLimiter, scheduledMsgLimiter, formatRetryDelay } from "@/lib/rateLimit";
 import { useReconnectRefetch, createSendDedup } from "@/lib/networkState";
@@ -92,6 +93,7 @@ interface ImportedMessage {
   content: string | null;
   original_timestamp: string;
   created_at: string;
+  is_self: boolean;
 }
 
 type TimelineItem =
@@ -562,25 +564,39 @@ const Chat = () => {
   // WA-01 FIX: Fetch imported_chats from DB and keep in sync via realtime.
   // Previously this table was write-only — data was inserted but never queried
   // here, so imported messages never appeared anywhere in the UI.
+  // WA-08 FIX: this only fetched rows owned by the current user, so whichever
+  // partner did NOT run the import never saw the imported chat at all — even
+  // though RLS ("owner_id = auth.uid() OR owner_id = get_partner_id(auth.uid())")
+  // already allowed it. Now fetches/subscribes for both owner_id values.
   useEffect(() => {
-    if (!user) return;
+    if (!user || !partnerId) return;
     const fetchImported = async () => {
       const { data } = await supabase
         .from("imported_chats" as any)
-        .select("id,sender_name,content,original_timestamp,created_at")
-        .eq("owner_id", user.id)
+        .select("id,sender_name,content,original_timestamp,created_at,is_self")
+        .in("owner_id", [user.id, partnerId])
         .order("original_timestamp", { ascending: true });
       if (data) setImportedMessages(data as unknown as ImportedMessage[]);
     };
     fetchImported();
-    // Listen for new batches being inserted (import in progress)
-    const ch = supabase.channel(`imported-rt-${user.id}`)
+    // Listen for new batches being inserted (import in progress), from either
+    // partner. postgres_changes only supports one equality filter per
+    // listener, so register one per owner_id and dedupe by row id.
+    const seenIds = new Set<string>();
+    const handleInsert = (payload: { new: Record<string, unknown> }) => {
+      const row = payload.new as unknown as ImportedMessage;
+      if (seenIds.has(row.id)) return;
+      seenIds.add(row.id);
+      setImportedMessages(prev => [...prev, row]);
+    };
+    const ch = supabase.channel(`imported-rt-${[user.id, partnerId].sort().join("-")}`)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "imported_chats",
-          filter: `owner_id=eq.${user.id}` },
-        (payload) => setImportedMessages(prev => [...prev, payload.new as unknown as ImportedMessage]))
+          filter: `owner_id=eq.${user.id}` }, handleInsert)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "imported_chats",
+          filter: `owner_id=eq.${partnerId}` }, handleInsert)
       .subscribe();
     return () => { supabase.removeChannel(ch); };
-  }, [user]);
+  }, [user, partnerId]);
 
   // ─── Realtime messages ────────────────────────────────────────────────────
   useEffect(() => {
@@ -648,11 +664,23 @@ const Chat = () => {
     return () => { supabase.removeChannel(ch); };
   }, [user, decrypt]);
 
-  // FIX: auto-scroll ONLY on new messages appended (not when loading older ones)
+  // FIX: auto-scroll on new messages appended (not when loading older ones).
+  // BUG FIX: this used to depend only on `messages`, but the rendered
+  // timeline also includes callHistory and importedMessages (WhatsApp
+  // import) — so a finished call or a batch of imported chat never
+  // triggered the scroll. Now watches all three. A short follow-up scroll
+  // catches late layout shifts (a big WhatsApp import landing at once, or
+  // images still loading) that can leave a long chat short of the bottom.
   useEffect(() => {
     if (isLoadingMoreRef.current) return;
-    messagesEndRef.current?.scrollIntoView({ behavior:"smooth" });
-  }, [messages]);
+    const raf = requestAnimationFrame(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    });
+    const t = setTimeout(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }, 350);
+    return () => { cancelAnimationFrame(raf); clearTimeout(t); };
+  }, [messages.length, callHistory.length, importedMessages.length]);
 
   // ─── Scheduled message ────────────────────────────────────────────────────
   const handleScheduleMessage = useCallback(async (sendAt: Date) => {
@@ -1019,10 +1047,10 @@ const Chat = () => {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
       stream.getTracks().forEach(t=>t.stop());
       playCallSound();
-      const { data, error:fnErr } = await supabase.functions.invoke("daily-call",{ body:{ action:"create-room", roomName:`duo-${user.id.slice(0,8)}-${Date.now()}` } });
-      if (fnErr||data?.error) throw new Error(data?.error||fnErr?.message||"Failed to create room");
-      const { data:tokenData, error:tokErr } = await supabase.functions.invoke("daily-call",{ body:{ action:"get-token", roomName:data.name } });
-      if (tokErr||tokenData?.error) throw new Error(tokenData?.error||tokErr?.message||"Failed to get token");
+      const data = await invokeEdgeFunction<{ name: string; url: string }>("daily-call",
+        { body:{ action:"create-room", roomName:`duo-${user.id.slice(0,8)}-${Date.now()}` } });
+      const tokenData = await invokeEdgeFunction<{ token: string }>("daily-call",
+        { body:{ action:"get-token", roomName:data.name } });
       const { data:callRecord } = await supabase.from("call_history").insert({
         caller_id:user.id, receiver_id:partnerId, call_type:mode,
         call_direction:"outgoing", status:"in_progress",
@@ -1042,8 +1070,8 @@ const Chat = () => {
     if (isStartingCall) return; // CALL-01 FIX: guard against double-accept
     setIsStartingCall(true);
     try {
-      const { data:tokenData, error:tokErr } = await supabase.functions.invoke("daily-call",{ body:{ action:"get-token", roomName:roomUrl.split("/").pop() } });
-      if (tokErr||tokenData?.error) throw new Error("Failed to get token");
+      const tokenData = await invokeEdgeFunction<{ token: string }>("daily-call",
+        { body:{ action:"get-token", roomName:roomUrl.split("/").pop() } });
       // CALL-02 FIX: use videoOff flag instead of toggleVideo() after join
       await joinCall(roomUrl, tokenData.token, callType === "voice");
       toast({ title:"Call connected 📞" });
@@ -1392,12 +1420,15 @@ const Chat = () => {
                 if (item.type==="imported") {
                   const imp = item.data as ImportedMessage;
                   const impTime = new Date(imp.original_timestamp).toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" });
-                  // Heuristic: if sender_name matches the user's own display name, show on right
-                  // We don't have a reliable mapping so we always show on left with sender label
+                  // WA-08 FIX: whoever imported the chat tags each row with is_self
+                  // (set at import time via a sender picker) so we can show "You" /
+                  // the partner's real name instead of the raw WhatsApp export name
+                  // (often just a phone number for whichever contact wasn't saved).
+                  const label = imp.is_self ? "You" : (partnerName || imp.sender_name);
                   return (
-                    <div key={`imp-${imp.id}`} className="flex justify-start px-3 py-0.5">
-                      <div className="max-w-[75%] bg-muted/40 border border-border/40 rounded-2xl rounded-tl-sm px-3 py-2 space-y-0.5">
-                        <p className="text-[10px] font-semibold text-primary/70">{imp.sender_name}</p>
+                    <div key={`imp-${imp.id}`} className={`flex px-3 py-0.5 ${imp.is_self ? "justify-end" : "justify-start"}`}>
+                      <div className={`max-w-[75%] bg-muted/40 border border-border/40 rounded-2xl px-3 py-2 space-y-0.5 ${imp.is_self ? "rounded-tr-sm" : "rounded-tl-sm"}`}>
+                        <p className="text-[10px] font-semibold text-primary/70">{label}</p>
                         <p className="text-sm text-foreground/80 whitespace-pre-wrap break-words">{imp.content}</p>
                         <div className="flex items-center gap-1 justify-end">
                           <span className="text-[9px] text-muted-foreground">{impTime}</span>

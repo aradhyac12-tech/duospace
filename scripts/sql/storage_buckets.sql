@@ -96,26 +96,12 @@ do $$ begin
       using (bucket_id = 'chat-files'
              and (storage.foldername(name))[1] = auth.uid()::text);
   end if;
-  -- Read: sender OR their linked partner (via profiles.partner_id both ways).
-  if not exists (select 1 from pg_policies where policyname = 'chat-files pair read') then
-    create policy "chat-files pair read" on storage.objects
-      for select to authenticated
-      using (
-        bucket_id = 'chat-files'
-        and (
-          (storage.foldername(name))[1] = auth.uid()::text
-          or exists (
-            select 1 from public.profiles p
-            where p.user_id = auth.uid()
-              and p.partner_id::text = (storage.foldername(name))[1]
-          )
-          or exists (
-            select 1 from public.profiles p
-            where p.user_id::text = (storage.foldername(name))[1]
-              and p.partner_id = auth.uid()
-          )
-        )
-      );
+  -- Read: public (bucket is public; policy still needed for S3 API access).
+  if not exists (select 1 from pg_policies where policyname = 'chat-files public read') then
+    create policy "chat-files public read" on storage.objects
+      for select to anon, authenticated
+      using (bucket_id = 'chat-files');
   end if;
+
 end $$;
 

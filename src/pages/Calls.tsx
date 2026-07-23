@@ -202,7 +202,12 @@ const Calls = () => {
     } catch (err: unknown) {
       // Restore other camera consumers if the call failed to start.
       resumeCameraConsumers("call-start-failed");
-      toast({ title: "Call failed", description: (err instanceof Error ? err.message : String(err)), variant: "destructive" });
+      const msg = err instanceof Error ? err.message
+        : (err && typeof err === "object" && "message" in err) ? String((err as { message: unknown }).message)
+        : typeof err === "string" ? err
+        : "Something went wrong starting the call.";
+      toast({ title: "Call failed", description: msg, variant: "destructive" });
+
     }
     setIsStartingCall(false);
   };

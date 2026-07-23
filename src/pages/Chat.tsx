@@ -1240,7 +1240,7 @@ const Chat = () => {
   }
 
   return (
-    <div className="flex flex-col h-[100dvh] bg-background overflow-hidden">
+    <div data-vanish={disappearMode ? "on" : "off"} className="chat-root flex flex-col h-[100dvh] bg-background overflow-hidden transition-colors duration-500">
       <IncomingCallOverlay onAccept={handleAcceptIncoming} onDecline={handleDeclineIncoming} />
 
       {/* Nudge flash overlay */}

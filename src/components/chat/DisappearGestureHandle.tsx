@@ -34,13 +34,24 @@ const ENGAGE_PX      = 6;    // filter accidental taps
 
 const DisappearGestureHandle = ({ active, currentMs, onCommit, onOpenPicker }: Props) => {
   const [pull, setPull] = useState(0);          // 0 … MAX_PULL — drives visuals
+  const [holdProgress, setHoldProgress] = useState(0); // 0..1 while long-pressing
   const dragging        = useRef(false);
   const startY          = useRef(0);
   const engaged         = useRef(false);
   const committed       = useRef(false);
+  const holdTimer       = useRef<number | null>(null);
+  const holdRaf         = useRef<number | null>(null);
+  const holdStart       = useRef(0);
+  const HOLD_MS         = 3000;
 
   const progress = Math.min(pull / PULL_THRESHOLD, 1);
   const willCommit = pull >= PULL_THRESHOLD;
+
+  const clearHold = useCallback(() => {
+    if (holdTimer.current) { clearTimeout(holdTimer.current); holdTimer.current = null; }
+    if (holdRaf.current) { cancelAnimationFrame(holdRaf.current); holdRaf.current = null; }
+    setHoldProgress(0);
+  }, []);
 
   const reset = useCallback(() => {
     dragging.current = false;
@@ -48,29 +59,48 @@ const DisappearGestureHandle = ({ active, currentMs, onCommit, onOpenPicker }: P
     committed.current = false;
     startY.current = 0;
     setPull(0);
-  }, []);
+    clearHold();
+  }, [clearHold]);
+
+  const beginHold = useCallback(() => {
+    holdStart.current = performance.now();
+    const tick = () => {
+      const p = Math.min(1, (performance.now() - holdStart.current) / HOLD_MS);
+      setHoldProgress(p);
+      if (p < 1) holdRaf.current = requestAnimationFrame(tick);
+    };
+    holdRaf.current = requestAnimationFrame(tick);
+    holdTimer.current = window.setTimeout(() => {
+      if (!committed.current) {
+        committed.current = true;
+        hapticMedium();
+        onCommit(active ? 0 : currentMs);
+      }
+      clearHold();
+    }, HOLD_MS);
+  }, [active, currentMs, onCommit, clearHold]);
 
   const onPointerDown = useCallback((e: React.PointerEvent) => {
-    // Ignore multi-touch and non-primary buttons.
     if (e.button && e.button !== 0) return;
     dragging.current = true;
     engaged.current = false;
     committed.current = false;
     startY.current = e.clientY;
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
-  }, []);
+    beginHold();
+  }, [beginHold]);
 
   const onPointerMove = useCallback((e: React.PointerEvent) => {
     if (!dragging.current) return;
     const dy = startY.current - e.clientY;
     if (dy < ENGAGE_PX) { if (pull !== 0) setPull(0); return; }
-    if (!engaged.current) { engaged.current = true; hapticLight(); }
+    if (!engaged.current) { engaged.current = true; hapticLight(); clearHold(); }
     const next = Math.min(MAX_PULL, dy - ENGAGE_PX);
     const crossedNow = next >= PULL_THRESHOLD;
     const crossedBefore = pull >= PULL_THRESHOLD;
     if (crossedNow && !crossedBefore) hapticMedium();
     setPull(next);
-  }, [pull]);
+  }, [pull, clearHold]);
 
   const finish = useCallback(() => {
     if (!dragging.current) return;
@@ -83,8 +113,6 @@ const DisappearGestureHandle = ({ active, currentMs, onCommit, onOpenPicker }: P
     reset();
   }, [pull, active, currentMs, onCommit, reset]);
 
-  // Safety: if the pointer stream is interrupted (e.g. context menu, native
-  // gesture), always snap back.
   useEffect(() => {
     const cancel = () => reset();
     window.addEventListener("pointercancel", cancel);
@@ -96,10 +124,10 @@ const DisappearGestureHandle = ({ active, currentMs, onCommit, onOpenPicker }: P
   }, [reset]);
 
   const onPillTap = () => {
-    // Only treat as tap if there was no engaged drag.
     if (engaged.current) return;
     if (active && onOpenPicker) onOpenPicker();
   };
+
 
   return (
     <>

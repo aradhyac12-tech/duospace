@@ -17,6 +17,14 @@ insert into storage.buckets (id, name, public, file_size_limit)
 values ('backups','backups',false,52428800)
 on conflict (id) do nothing;
 
+-- chat-files: private, per-sender prefix, 25 MB. Media exchanged in chat.
+-- Both partners in a linked pair can read each other's files (see policy).
+insert into storage.buckets (id, name, public, file_size_limit)
+values ('chat-files','chat-files',false,26214400)
+on conflict (id) do nothing;
+
+
+
 -- ── RLS on storage.objects ───────────────────────────────────────────────
 -- avatars: everyone reads (public bucket already implies public read via
 -- the CDN, but the objects policy still gates the S3 API), owner writes.

@@ -131,23 +131,8 @@ const DisappearGestureHandle = ({ active, currentMs, onCommit, onOpenPicker }: P
 
   return (
     <>
-      {/* Full-viewport dim overlay driven by the drag. Instagram darkens the
-          whole screen as vanish mode engages — we do the same with a purely
-          opacity-driven layer that sits above the chat but below the composer. */}
-      <AnimatePresence>
-        {(pull > 0 || active) && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: active ? 0.55 : progress * 0.6 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.15, ease: "easeOut" }}
-            className="pointer-events-none fixed inset-0 z-30 bg-black"
-            aria-hidden="true"
-          />
-        )}
-      </AnimatePresence>
-
-      {/* Gesture pill */}
+      {/* Gesture pill — the chat root swaps to a dark theme via [data-vanish],
+          so we don't need a black overlay anymore. */}
       <div className="relative flex items-center justify-center py-1 select-none z-40">
         <motion.button
           type="button"
@@ -155,19 +140,32 @@ const DisappearGestureHandle = ({ active, currentMs, onCommit, onOpenPicker }: P
           onPointerMove={onPointerMove}
           onPointerUp={finish}
           onClick={onPillTap}
-          aria-label={active ? "Vanish mode on — pull up to turn off, tap to change timer" : "Pull up to turn on vanish mode"}
-          animate={{ y: -pull * 0.35, scale: 1 + progress * 0.15 }}
+          aria-label={active ? "Vanish mode on — pull up or hold 3s to turn off, tap to change timer" : "Pull up or hold 3s to turn on vanish mode"}
+          animate={{ y: -pull * 0.35, scale: 1 + progress * 0.15 + holdProgress * 0.1 }}
           transition={ dragging.current
-            ? { type: "tween", duration: 0 }              // 1:1 with the finger while dragging
-            : { type: "spring", stiffness: 520, damping: 32 } // snappy release
+            ? { type: "tween", duration: 0 }
+            : { type: "spring", stiffness: 520, damping: 32 }
           }
           style={{ touchAction: "none" }}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full transition-colors ${
+          className={`relative flex items-center gap-1.5 px-3 py-1.5 rounded-full transition-colors ${
             active || willCommit
               ? "bg-primary/15"
               : "bg-transparent"
           }`}
         >
+          {/* Long-press progress ring */}
+          {holdProgress > 0 && holdProgress < 1 && (
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-0 rounded-full"
+              style={{
+                background: `conic-gradient(hsl(var(--primary)) ${holdProgress * 360}deg, transparent 0deg)`,
+                WebkitMask: "radial-gradient(circle, transparent 62%, black 64%)",
+                mask: "radial-gradient(circle, transparent 62%, black 64%)",
+                opacity: 0.9,
+              }}
+            />
+          )}
           <motion.span
             animate={{
               width: willCommit || active ? 28 : 36,
@@ -186,28 +184,18 @@ const DisappearGestureHandle = ({ active, currentMs, onCommit, onOpenPicker }: P
           )}
         </motion.button>
 
-        {/* Hint text while dragging */}
         <AnimatePresence>
-          {pull > 0 && !active && (
+          {(pull > 0 || holdProgress > 0.05) && (
             <motion.span
-              key="hint-on"
+              key="hint"
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 6 }}
-              className="pointer-events-none absolute -top-6 text-[10px] font-medium text-white/90"
+              className="pointer-events-none absolute -top-6 text-[10px] font-medium text-foreground/80"
             >
-              {willCommit ? "Release to turn on" : "Keep pulling…"}
-            </motion.span>
-          )}
-          {pull > 0 && active && (
-            <motion.span
-              key="hint-off"
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 6 }}
-              className="pointer-events-none absolute -top-6 text-[10px] font-medium text-white/90"
-            >
-              {willCommit ? "Release to turn off" : "Keep pulling…"}
+              {active
+                ? (willCommit ? "Release to turn off" : holdProgress > 0.05 ? "Hold to turn off…" : "Keep pulling…")
+                : (willCommit ? "Release to turn on" : holdProgress > 0.05 ? "Hold to turn on…" : "Keep pulling…")}
             </motion.span>
           )}
         </AnimatePresence>
@@ -217,3 +205,4 @@ const DisappearGestureHandle = ({ active, currentMs, onCommit, onOpenPicker }: P
 };
 
 export default DisappearGestureHandle;
+

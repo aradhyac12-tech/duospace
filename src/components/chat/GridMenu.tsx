@@ -48,10 +48,14 @@ export const HubButton = ({ onClick, isOpen, onLongPress }: HubButtonProps) => {
 };
 
 
+// Everything that isn't one of the bottom bar's 3 pages (Chat, Calls,
+// Settings) lives here instead. Music points at /groic — the unified
+// music + listen-together hub (saved playlists still open via /playlist
+// as a deep link, but /groic is the entry point everywhere else now).
 const navItems = [
   { path: "/gallery", icon: Image, label: "Gallery" },
   { path: "/map", icon: MapPin, label: "Map" },
-  { path: "/playlist", icon: Music, label: "Music" },
+  { path: "/groic", icon: Music, label: "Music" },
   { path: "/shayari", icon: BookOpen, label: "Shayari" },
   { path: "/us", icon: Heart, label: "Us" },
 ];

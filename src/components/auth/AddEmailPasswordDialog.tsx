@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
+import { invokeEdgeFunction, EdgeFunctionError } from "@/lib/edgeFunction";
 
 // Signed-in surface for QR-signed-up users who don't have email+password yet.
 // Two-step OTP: request → verify+set.
@@ -31,40 +31,41 @@ const AddEmailPasswordDialog = ({
       toast({ title: "Enter a valid email", variant: "destructive" }); return;
     }
     setLoading(true);
-    const { data, error } = await supabase.functions.invoke("set-email-password", {
-      body: { step: "request", email: email.trim() },
-    });
-    setLoading(false);
-    if (error || data?.error) {
+    try {
+      await invokeEdgeFunction("set-email-password", {
+        body: { step: "request", email: email.trim() },
+      });
+      toast({ title: "Code sent", description: "Check your email." });
+      setStep("verify");
+    } catch (err) {
       toast({
         title: "Couldn't send code",
-        description: error?.message ?? data?.error ?? "",
+        description: err instanceof EdgeFunctionError ? err.message : (err instanceof Error ? err.message : ""),
         variant: "destructive",
       });
-      return;
     }
-    toast({ title: "Code sent", description: "Check your email." });
-    setStep("verify");
+    setLoading(false);
   };
 
   const verify = async () => {
     setLoading(true);
-    const { data, error } = await supabase.functions.invoke("set-email-password", {
-      body: { step: "verify", email: email.trim(), otp: otp.trim(), password },
-    });
-    setLoading(false);
-    if (error || data?.error) {
+    try {
+      await invokeEdgeFunction("set-email-password", {
+        body: { step: "verify", email: email.trim(), otp: otp.trim(), password },
+        retry: false, // OTP is single-use; don't risk a duplicate submit
+      });
+      toast({ title: "Email + password set", description: "You can now sign in with email." });
+      onSuccess?.();
+      reset();
+      onOpenChange(false);
+    } catch (err) {
       toast({
         title: "Couldn't verify",
-        description: error?.message ?? data?.error ?? "",
+        description: err instanceof EdgeFunctionError ? err.message : (err instanceof Error ? err.message : ""),
         variant: "destructive",
       });
-      return;
     }
-    toast({ title: "Email + password set", description: "You can now sign in with email." });
-    onSuccess?.();
-    reset();
-    onOpenChange(false);
+    setLoading(false);
   };
 
   return (

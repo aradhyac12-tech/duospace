@@ -8,6 +8,7 @@ import { useDailyCall } from "@/hooks/useDailyCall";
 import { useToast } from "@/hooks/use-toast";
 import LipReadingOverlay from "@/components/LipReadingOverlay";
 import { pauseCameraConsumers, resumeCameraConsumers } from "@/lib/cameraBus";
+import { invokeEdgeFunction } from "@/lib/edgeFunction";
 
 interface NetworkInformation {
   downlink?: number;
@@ -172,15 +173,13 @@ const Calls = () => {
     // enrollment streams so Daily.co can claim the device cleanly.
     pauseCameraConsumers("call-start");
     try {
-      const { data, error: fnError } = await supabase.functions.invoke("daily-call", {
+      const data = await invokeEdgeFunction<{ name: string; url: string }>("daily-call", {
         body: { action: "create-room", roomName: `duo-${user.id.slice(0, 8)}-${Date.now()}` },
       });
-      if (fnError || data?.error) throw new Error(data?.error || fnError?.message || "Failed to create room");
 
-      const { data: tokenData, error: tokenError } = await supabase.functions.invoke("daily-call", {
+      const tokenData = await invokeEdgeFunction<{ token: string }>("daily-call", {
         body: { action: "get-token", roomName: data.name },
       });
-      if (tokenError || tokenData?.error) throw new Error(tokenData?.error || tokenError?.message || "Failed to get token");
 
       // Save call to history — Fix #4: store full room URL so receiver can join
       callStartTimeRef.current = new Date();
@@ -203,7 +202,12 @@ const Calls = () => {
     } catch (err: unknown) {
       // Restore other camera consumers if the call failed to start.
       resumeCameraConsumers("call-start-failed");
-      toast({ title: "Call failed", description: (err instanceof Error ? err.message : String(err)), variant: "destructive" });
+      const msg = err instanceof Error ? err.message
+        : (err && typeof err === "object" && "message" in err) ? String((err as { message: unknown }).message)
+        : typeof err === "string" ? err
+        : "Something went wrong starting the call.";
+      toast({ title: "Call failed", description: msg, variant: "destructive" });
+
     }
     setIsStartingCall(false);
   };

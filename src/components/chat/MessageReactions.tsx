@@ -81,20 +81,25 @@ const MessageReactions = ({ messageId, userId, isMine, allReactions }: MessageRe
     ? allReactions.filter(r => r.message_id === messageId)
     : localReactions;
 
+  // BUG FIX: a message should only ever carry ONE reaction per user. This
+  // used to only check for an existing row with the SAME emoji, so tapping
+  // a different emoji added a second row instead of replacing the first.
+  // Now any existing reaction from this user on this message is removed
+  // before adding the new one; tapping the same emoji again just removes it.
   const toggleReaction = async (emoji: string) => {
     setShowPicker(false);
-    const existing = reactions.find((r) => r.user_id === userId && r.emoji === emoji);
-    if (existing) {
-      await supabase.from("message_reactions").delete().eq("id", existing.id);
-      if (allReactions === undefined) setLocalReactions(prev => prev.filter(r => r.id !== existing.id));
-    } else {
-      const { data } = await supabase
-        .from("message_reactions")
-        .insert({ message_id: messageId, user_id: userId, emoji })
-        .select()
-        .single();
-      if (data && allReactions === undefined) setLocalReactions(prev => [...prev, data as Reaction]);
+    const mine = reactions.find((r) => r.user_id === userId);
+    if (mine) {
+      await supabase.from("message_reactions").delete().eq("id", mine.id);
+      if (allReactions === undefined) setLocalReactions(prev => prev.filter(r => r.id !== mine.id));
+      if (mine.emoji === emoji) return; // toggling the same emoji off
     }
+    const { data } = await supabase
+      .from("message_reactions")
+      .insert({ message_id: messageId, user_id: userId, emoji })
+      .select()
+      .single();
+    if (data && allReactions === undefined) setLocalReactions(prev => [...prev, data as Reaction]);
   };
 
   const grouped = reactions.reduce<Record<string, { count: number; byMe: boolean }>>((acc, r) => {

@@ -118,11 +118,11 @@ const BottomNav = () => {
   return (
     <motion.nav
       initial={{ y: 0 }}
-      animate={{ y: isVisible ? 0 : 100 }}
+      animate={{ y: isVisible ? 0 : 140 }}
       transition={{ type: "spring", stiffness: 400, damping: 35 }}
-      className="fixed bottom-0 left-0 right-0 z-50 bg-card/80 backdrop-blur-xl border-t border-border safe-bottom"
+      className="fixed bottom-3 left-1/2 -translate-x-1/2 z-50 w-[min(92%,420px)] rounded-full border border-white/15 dark:border-white/10 bg-white/55 dark:bg-black/40 backdrop-blur-2xl backdrop-saturate-150 shadow-[0_8px_30px_-8px_rgba(0,0,0,0.25)] safe-bottom"
     >
-      <div className="flex items-center justify-around h-16 max-w-lg mx-auto px-2">
+      <div className="flex items-center justify-around h-14 px-2">
         {tabs.map((tab) => {
           const isActive = location.pathname === tab.path;
           const Icon = tab.icon;

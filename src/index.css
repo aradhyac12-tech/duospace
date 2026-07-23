@@ -261,3 +261,22 @@ button, a, [role="button"] {
   touch-action: manipulation;
 }
 
+
+/* ── Vanish (disappearing) mode — swap the chat surface into a deep dark
+   theme, Instagram-style, without touching the app's global theme.        */
+[data-vanish="on"].chat-root {
+  --background: 240 8% 6%;
+  --foreground: 0 0% 96%;
+  --card: 240 8% 10%;
+  --card-foreground: 0 0% 96%;
+  --muted: 240 6% 14%;
+  --muted-foreground: 240 4% 65%;
+  --border: 240 6% 18%;
+  --input: 240 6% 18%;
+  --accent: 262 60% 24%;
+  --accent-foreground: 0 0% 96%;
+  --primary: 262 83% 68%;
+  --primary-foreground: 0 0% 100%;
+  color: hsl(var(--foreground));
+  background: radial-gradient(120% 80% at 50% 0%, hsl(262 40% 12%) 0%, hsl(240 10% 4%) 60%);
+}

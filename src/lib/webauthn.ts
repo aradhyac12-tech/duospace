@@ -1,33 +1,12 @@
 // Thin client wrappers around @simplewebauthn/browser + our edge functions.
 import { startRegistration, startAuthentication } from "@simplewebauthn/browser";
-import type { FunctionsHttpError } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
+import { invokeEdgeFunction, EdgeFunctionError } from "@/lib/edgeFunction";
 
-// supabase.functions.invoke wraps non-2xx as FunctionsHttpError whose
-// `.message` is the useless string "Edge Function returned a non-2xx status
-// code". The real error text lives in `context.response` — try to pull it
-// so toasts show something actionable.
-async function extractInvokeError(error: unknown, fallback: string): Promise<string> {
-  const err = error as FunctionsHttpError & { context?: { response?: Response } };
-  const resp = err?.context?.response;
-  if (resp && typeof resp.clone === "function") {
-    try {
-      const cloned = resp.clone();
-      const bodyText = await cloned.text();
-      if (bodyText) {
-        try {
-          const parsed = JSON.parse(bodyText);
-          if (parsed?.error) return String(parsed.error);
-          if (parsed?.message) return String(parsed.message);
-        } catch { /* not JSON */ }
-        return bodyText.slice(0, 240);
-      }
-    } catch { /* ignore */ }
-  }
-  const msg = (error as { message?: string })?.message;
-  return msg && msg !== "Edge Function returned a non-2xx status code"
-    ? msg
-    : fallback;
+function messageOf(err: unknown, fallback: string): string {
+  if (err instanceof EdgeFunctionError) return err.message;
+  if (err instanceof Error) return err.message;
+  return fallback;
 }
 
 export async function registerPasskey(deviceName?: string): Promise<{
@@ -41,20 +20,25 @@ export async function registerPasskey(deviceName?: string): Promise<{
     );
   }
 
-  const { data: options, error } = await supabase.functions.invoke(
-    "webauthn-register-options",
-    { body: {} },
-  );
-  if (error) throw new Error(await extractInvokeError(error, "Couldn't start passkey enrollment"));
+  let options: any;
+  try {
+    options = await invokeEdgeFunction("webauthn-register-options", { body: {} });
+  } catch (err) {
+    throw new Error(messageOf(err, "Couldn't start passkey enrollment"));
+  }
   if (options?.error) throw new Error(options.error);
 
   const attResp = await startRegistration({ optionsJSON: options });
 
-  const { data: verify, error: vErr } = await supabase.functions.invoke(
-    "webauthn-register-verify",
-    { body: { response: attResp, device_name: deviceName } },
-  );
-  if (vErr) throw new Error(await extractInvokeError(vErr, "Couldn't verify passkey"));
+  let verify: any;
+  try {
+    verify = await invokeEdgeFunction("webauthn-register-verify", {
+      body: { response: attResp, device_name: deviceName },
+      retry: false, // registration ceremony response is single-use
+    });
+  } catch (err) {
+    throw new Error(messageOf(err, "Couldn't verify passkey"));
+  }
   if (verify?.error) throw new Error(verify.error);
   return verify;
 }
@@ -68,20 +52,25 @@ export async function loginWithPasskey(email?: string): Promise<void> {
     );
   }
 
-  const { data: options, error } = await supabase.functions.invoke(
-    "webauthn-login-options",
-    { body: email ? { email } : {} },
-  );
-  if (error) throw new Error(await extractInvokeError(error, "Couldn't start passkey sign-in"));
+  let options: any;
+  try {
+    options = await invokeEdgeFunction("webauthn-login-options", { body: email ? { email } : {} });
+  } catch (err) {
+    throw new Error(messageOf(err, "Couldn't start passkey sign-in"));
+  }
   if (options?.error) throw new Error(options.error);
 
   const assertion = await startAuthentication({ optionsJSON: options });
 
-  const { data, error: vErr } = await supabase.functions.invoke(
-    "webauthn-login-verify",
-    { body: { response: assertion } },
-  );
-  if (vErr) throw new Error(await extractInvokeError(vErr, "Passkey verification failed"));
+  let data: any;
+  try {
+    data = await invokeEdgeFunction("webauthn-login-verify", {
+      body: { response: assertion },
+      retry: false, // authentication assertion is single-use
+    });
+  } catch (err) {
+    throw new Error(messageOf(err, "Passkey verification failed"));
+  }
   if (data?.error) throw new Error(data.error);
   if (!data?.access_token || !data?.refresh_token) throw new Error("No session returned");
 

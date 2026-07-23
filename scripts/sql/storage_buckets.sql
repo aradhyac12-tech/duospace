@@ -74,4 +74,46 @@ do $$ begin
       with check (bucket_id = 'backups'
                   and (storage.foldername(name))[1] = auth.uid()::text);
   end if;
+
+  -- chat-files: sender may write to their own uid/ prefix.
+  if not exists (select 1 from pg_policies where policyname = 'chat-files owner write') then
+    create policy "chat-files owner write" on storage.objects
+      for insert to authenticated
+      with check (bucket_id = 'chat-files'
+                  and (storage.foldername(name))[1] = auth.uid()::text);
+  end if;
+  if not exists (select 1 from pg_policies where policyname = 'chat-files owner modify') then
+    create policy "chat-files owner modify" on storage.objects
+      for update to authenticated
+      using (bucket_id = 'chat-files'
+             and (storage.foldername(name))[1] = auth.uid()::text);
+  end if;
+  if not exists (select 1 from pg_policies where policyname = 'chat-files owner delete') then
+    create policy "chat-files owner delete" on storage.objects
+      for delete to authenticated
+      using (bucket_id = 'chat-files'
+             and (storage.foldername(name))[1] = auth.uid()::text);
+  end if;
+  -- Read: sender OR their linked partner (via profiles.partner_id both ways).
+  if not exists (select 1 from pg_policies where policyname = 'chat-files pair read') then
+    create policy "chat-files pair read" on storage.objects
+      for select to authenticated
+      using (
+        bucket_id = 'chat-files'
+        and (
+          (storage.foldername(name))[1] = auth.uid()::text
+          or exists (
+            select 1 from public.profiles p
+            where p.user_id = auth.uid()
+              and p.partner_id::text = (storage.foldername(name))[1]
+          )
+          or exists (
+            select 1 from public.profiles p
+            where p.user_id::text = (storage.foldername(name))[1]
+              and p.partner_id = auth.uid()
+          )
+        )
+      );
+  end if;
 end $$;
+

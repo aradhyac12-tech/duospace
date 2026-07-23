@@ -17,11 +17,13 @@ insert into storage.buckets (id, name, public, file_size_limit)
 values ('backups','backups',false,52428800)
 on conflict (id) do nothing;
 
--- chat-files: private, per-sender prefix, 25 MB. Media exchanged in chat.
--- Both partners in a linked pair can read each other's files (see policy).
+-- chat-files: public read (bucket serves via CDN so partners can display each
+-- other's media without signing URLs), per-sender uid/ prefix, 25 MB.
 insert into storage.buckets (id, name, public, file_size_limit)
-values ('chat-files','chat-files',false,26214400)
-on conflict (id) do nothing;
+values ('chat-files','chat-files',true,26214400)
+on conflict (id) do update set public = excluded.public;
+
+
 
 
 

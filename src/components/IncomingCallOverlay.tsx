@@ -43,6 +43,25 @@ const IncomingCallOverlay = ({ onAccept, onDecline }: IncomingCallOverlayProps) 
     setIncomingCall(null);
   }, [incomingCall, onDecline]);
 
+  const hydrateIncomingCall = useCallback(async (call: { id: string; caller_id: string; call_type: string; room_name: string }) => {
+    const { data: profile } = await supabase
+      .from("profiles").select("display_name, avatar_url, pet_name")
+      .eq("user_id", call.caller_id).single();
+
+    startCallVibration();
+    playCallSound();
+
+    setIncomingCall({
+      id: call.id,
+      caller_id: call.caller_id,
+      call_type: call.call_type,
+      // Fix #4: room_name now stores the full Daily.co URL
+      room_url: call.room_name,
+      callerName: profile?.pet_name || profile?.display_name || "Partner",
+      callerAvatar: profile?.avatar_url || null,
+    });
+  }, []);
+
   useEffect(() => {
     if (!user) return;
 
@@ -54,23 +73,7 @@ const IncomingCallOverlay = ({ onAccept, onDecline }: IncomingCallOverlayProps) 
       }, async (payload) => {
         const call = payload.new as any;
         if (call.status !== "in_progress") return;
-
-        const { data: profile } = await supabase
-          .from("profiles").select("display_name, avatar_url, pet_name")
-          .eq("user_id", call.caller_id).single();
-
-        startCallVibration();
-        playCallSound();
-
-        setIncomingCall({
-          id: call.id,
-          caller_id: call.caller_id,
-          call_type: call.call_type,
-          // Fix #4: room_name now stores the full Daily.co URL
-          room_url: call.room_name,
-          callerName: profile?.pet_name || profile?.display_name || "Partner",
-          callerAvatar: profile?.avatar_url || null,
-        });
+        await hydrateIncomingCall(call);
       })
       .subscribe();
 
@@ -90,12 +93,33 @@ const IncomingCallOverlay = ({ onAccept, onDecline }: IncomingCallOverlayProps) 
       })
       .subscribe();
 
+    // Push-notification cold start: if the user opened the app from an
+    // incoming-call notification (full-screen intent or a tap), the
+    // call_history INSERT already happened before this component — and its
+    // realtime subscription above — ever mounted, so the INSERT handler
+    // above would never fire for it. Check directly for a still-ringing
+    // call addressed to this user so the answer UI still appears. The
+    // 45s window matches the notification's own auto-timeout.
+    (async () => {
+      const cutoff = new Date(Date.now() - 45_000).toISOString();
+      const { data: activeCall } = await supabase
+        .from("call_history")
+        .select("id, caller_id, call_type, room_name, status, started_at")
+        .eq("receiver_id", user.id)
+        .eq("status", "in_progress")
+        .gte("started_at", cutoff)
+        .order("started_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (activeCall) await hydrateIncomingCall(activeCall as any);
+    })();
+
     return () => {
       supabase.removeChannel(channel);
       supabase.removeChannel(cancelChannel);
       stopCallVibration();
     };
-  }, [user]);
+  }, [user, hydrateIncomingCall]);
 
   // Auto-dismiss after 30s
   useEffect(() => {
@@ -163,7 +187,7 @@ const IncomingCallOverlay = ({ onAccept, onDecline }: IncomingCallOverlayProps) 
               <motion.button whileTap={{ scale: 0.9 }} animate={{ scale: [1, 1.1, 1] }}
                 transition={{ repeat: Infinity, duration: 1.2 }} onClick={handleAccept}
                 aria-label={`Accept ${incomingCall.call_type} call from ${incomingCall.callerName}`}
-                className="h-16 w-16 rounded-full bg-green-500 flex items-center justify-center shadow-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-background">
+                className="h-16 w-16 rounded-full bg-success flex items-center justify-center shadow-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-background">
                 {incomingCall.call_type === "video" ? (
                   <Video className="h-7 w-7 text-background" aria-hidden="true" />
                 ) : (

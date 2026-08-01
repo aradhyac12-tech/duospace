@@ -1,9 +1,9 @@
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useMotionValue, useTransform } from "framer-motion";
 import {
   Send, Paperclip, ImageIcon, FileText, Trash2, Camera, Mic, Play, Pause,
-  Reply, Timer, TimerOff, Search, X, ChevronUp, ChevronDown, Phone, Video,
+  Reply, Timer, TimerOff, Search, X, ChevronUp, ChevronDown, ChevronRight, Phone, Video,
   MoreVertical, MicOff, VideoOff, PhoneOff, Monitor, MonitorOff, Captions,
-  Heart, Pin, Pencil, Check, WifiOff,
+  Heart, Pin, Pencil, Check, WifiOff, BellOff,
 } from "lucide-react";
 import MessageStatus from "@/components/chat/MessageStatus";
 import MessageReactions, { useReactionsChannel } from "@/components/chat/MessageReactions";
@@ -16,6 +16,7 @@ import GridMenu, { HubButton } from "@/components/chat/GridMenu";
 import CallEvent from "@/components/chat/CallEvent";
 import MessageContextMenu from "@/components/chat/MessageContextMenu";
 import IncomingCallOverlay from "@/components/IncomingCallOverlay";
+import ChatSurpriseHost from "@/components/chat/ChatSurpriseHost";
 import ScheduledMessagePicker from "@/components/chat/ScheduledMessagePicker";
 import LoveLetter from "@/components/chat/LoveLetter";
 import LipReadingOverlay from "@/components/LipReadingOverlay";
@@ -27,13 +28,17 @@ import { resolveWallpaperStyle } from "@/lib/wallpapers";
 import DisappearGestureHandle from "@/components/chat/DisappearGestureHandle";
 import { supabase } from "@/integrations/supabase/client";
 import { playMessageSound, playCallSound } from "@/lib/sounds";
-import { hapticMedium, hapticMessageSent, hapticMessageReceived } from "@/lib/haptics";
+import { hapticTick, hapticLight, hapticMedium, hapticSelection, hapticWarning, hapticError, hapticMessageSent, hapticSend, hapticSwipe } from "@/lib/haptics";
+import { routePreload } from "@/App";
 import { useAuth } from "@/hooks/useAuth";
 import { useE2E } from "@/hooks/useE2E";
 import storage from "@/lib/storage";
 import { useDailyCall } from "@/hooks/useDailyCall";
+import { useMediaPermission } from "@/components/PermissionDeniedSheet";
 import { useToast } from "@/hooks/use-toast";
 import { invokeEdgeFunction } from "@/lib/edgeFunction";
+import { extractErrorMessage } from "@/lib/errorMessage";
+import { resolveSignedUrl } from "@/lib/signedStorageUrl";
 import { logError, logWarn } from "@/lib/telemetry";
 import { callRoomLimiter, scheduledMsgLimiter, formatRetryDelay } from "@/lib/rateLimit";
 import { useReconnectRefetch, createSendDedup } from "@/lib/networkState";
@@ -201,20 +206,25 @@ const VoiceMessagePlayer = ({ src, isMine }: { src: string; isMine: boolean }) =
   return (
     <div className="flex items-center gap-2.5 min-w-[180px]">
       <audio ref={audioRef} src={src} preload="metadata" crossOrigin="anonymous" />
-      <button onClick={toggle} aria-label={playing ? "Pause voice message" : "Play voice message"} className="h-9 w-9 rounded-full bg-accent/60 flex items-center justify-center shrink-0 transition-colors hover:bg-accent active:scale-95">
-        {playing ? <Pause className="h-4 w-4 text-foreground" aria-hidden="true" /> : <Play className="h-4 w-4 text-foreground ml-0.5" aria-hidden="true" />}
+      <button onClick={() => { hapticTick(); toggle(); }} aria-label={playing ? "Pause voice message" : "Play voice message"}
+        className={`h-9 w-9 rounded-full flex items-center justify-center shrink-0 transition-colors active:scale-95 ${
+          isMine ? "bg-primary-foreground/20 hover:bg-primary-foreground/30" : "bg-accent/15 hover:bg-accent/25"
+        }`}>
+        {playing
+          ? <Pause className={`h-4 w-4 ${isMine?"text-primary-foreground":"text-accent"}`} aria-hidden="true" />
+          : <Play className={`h-4 w-4 ml-0.5 ${isMine?"text-primary-foreground":"text-accent"}`} aria-hidden="true" />}
       </button>
       <div className="flex-1 space-y-1">
-        <div className="flex items-end gap-[2px] h-5 cursor-pointer" onClick={seekTo}>
+        <div className="flex items-end gap-[2px] h-5 cursor-pointer" onClick={(e) => { hapticTick(); seekTo(e); }}>
           {waveform.map((h,i) => (
             <div key={i} className={`flex-1 rounded-full transition-all duration-75 ${
               duration && (i/waveform.length)<=(progress/duration)
-                ? (isMine?"bg-background/60":"bg-foreground/60")
-                : (isMine?"bg-background/20":"bg-foreground/20")
+                ? (isMine?"bg-primary-foreground/70":"bg-accent/70")
+                : (isMine?"bg-primary-foreground/25":"bg-foreground/15")
             }`} style={{ height:`${Math.max(15,h*100)}%` }} />
           ))}
         </div>
-        <p className="text-[10px] text-muted-foreground">{fmt(progress>0?progress:duration)}</p>
+        <p className={`text-[10px] font-mono ${isMine?"text-primary-foreground/60":"text-muted-foreground"}`}>{fmt(progress>0?progress:duration)}</p>
       </div>
     </div>
   );
@@ -225,7 +235,7 @@ const PinnedMessageBanner = ({ msg, onJump }: { msg: DecryptedMessage; onJump: (
   <motion.button
     initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }}
     exit={{ height: 0, opacity: 0 }}
-    onClick={onJump}
+    onClick={() => { hapticLight(); onJump(); }}
     className="w-full px-4 py-2 bg-primary/5 border-b border-primary/10 flex items-center gap-2 text-left"
   >
     <Pin className="h-3 w-3 text-primary shrink-0" />
@@ -242,7 +252,7 @@ const MessageBubble = ({
   repliedMsg, partnerName, userId,
   isFirstInGroup, isLastInGroup, partnerAvatar,
   onReply, onLongPress, onPhotoView, formatTime,
-  allReactions, mediaVisible,
+  allReactions, mediaVisible, isReactingTo, onReactionPickerClose,
 }: {
   msg: DecryptedMessage; isMine: boolean; isDisappearing: boolean;
   isHighlighted: boolean; isActiveResult: boolean;
@@ -251,20 +261,56 @@ const MessageBubble = ({
   onReply: () => void; onLongPress: () => void;
   onPhotoView: (url: string) => void; formatTime: (iso: string) => string;
   allReactions?: { id: string; message_id: string; user_id: string; emoji: string; created_at: string }[]; mediaVisible?: boolean;
+  isReactingTo?: boolean; onReactionPickerClose?: () => void;
 }) => {
   const lph = useLongPress(onLongPress, 500);
+  // Swipe-to-reply: track drag offset as a motion value (not React state) so
+  // the icon reveal is driven by the compositor, not a re-render per frame.
+  const dragX = useMotionValue(0);
+  const REPLY_THRESHOLD = 44;
+  const replyIconOpacity = useTransform(dragX, [0, REPLY_THRESHOLD], [0, 1]);
+  const replyIconScale = useTransform(dragX, [0, REPLY_THRESHOLD], [0.6, 1]);
+  const swipeFiredRef = useRef(false);
   return (
     <motion.div id={`msg-${msg.id}`}
-      initial={{ opacity: 0, y: 4 }} animate={{ opacity: isDisappearing ? 0.6 : 1, y: 0 }}
-      transition={{ duration: 0.15, ease: "easeOut" }}
+      layout="position"
+      initial={{ opacity: 0, y: 4, scale: 1 }} animate={{ opacity: isDisappearing ? 0.6 : 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.94, filter: "blur(3px)", transition: { type: "spring", stiffness: 260, damping: 30 } }}
+      transition={{ duration: 0.15, ease: "easeOut", layout: { duration: 0.3, ease: "easeOut" } }}
       className={`flex ${isMine?"justify-end":"justify-start"} group ${isFirstInGroup ? "pt-2" : "pt-[1px]"} ${
         isActiveResult  ? "ring-2 ring-primary rounded-2xl"
         : isHighlighted ? "ring-1 ring-primary/40 rounded-2xl"
         : ""
       }`}>
-      <div className="flex items-end gap-1.5 max-w-[80%]" {...lph}>
+      <motion.div
+        className="flex items-end gap-1.5 max-w-[80%] relative"
+        style={{ x: dragX }}
+        drag="x"
+        dragConstraints={{ left: 0, right: REPLY_THRESHOLD + 16 }}
+        dragElastic={0.15}
+        dragSnapToOrigin
+        onDrag={(_, info) => {
+          if (!swipeFiredRef.current && info.offset.x > REPLY_THRESHOLD) {
+            swipeFiredRef.current = true;
+            hapticSwipe();
+          }
+        }}
+        onDragEnd={(_, info) => {
+          if (info.offset.x > REPLY_THRESHOLD) onReply();
+          swipeFiredRef.current = false;
+        }}
+        {...lph}
+      >
+        {/* Reply-icon reveal — purely visual, follows the same drag offset */}
+        <motion.div
+          aria-hidden="true"
+          style={{ opacity: replyIconOpacity, scale: replyIconScale }}
+          className="absolute -left-8 top-1/2 -translate-y-1/2 h-6 w-6 rounded-full bg-muted flex items-center justify-center pointer-events-none"
+        >
+          <Reply className="h-3 w-3 text-muted-foreground" />
+        </motion.div>
         {isMine && (
-          <button onClick={onReply} aria-label="Reply to this message"
+          <button onClick={() => { hapticLight(); onReply(); }} aria-label="Reply to this message"
             className="h-6 w-6 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all text-muted-foreground hover:text-foreground mb-1">
             <Reply className="h-3 w-3" aria-hidden="true" />
           </button>
@@ -281,8 +327,8 @@ const MessageBubble = ({
         )}
         <div className={`rounded-2xl px-3 py-2 select-none ${
           isMine
-            ? `bg-foreground text-background ${isLastInGroup ? "rounded-br-md" : "rounded-br-2xl"}`
-            : `bg-card border border-border/50 ${isLastInGroup ? "rounded-bl-md" : "rounded-bl-2xl"}`
+            ? `bg-primary text-primary-foreground ${isLastInGroup ? "rounded-br-md" : "rounded-br-2xl"}`
+            : `bg-card/70 backdrop-blur-md border border-border/30 ${isLastInGroup ? "rounded-bl-md" : "rounded-bl-2xl"}`
         } ${isDisappearing ? "ring-1 ring-primary/20" : ""}`}>
           {repliedMsg && (
             <QuotedMessage content={repliedMsg.decryptedContent||"Message"}
@@ -302,7 +348,7 @@ const MessageBubble = ({
           )}
           {/* Love letter */}
           {msg.message_type==="letter" && msg.decryptedContent && (
-            <div className={`rounded-xl px-3 py-2.5 mb-1 ${isMine?"bg-background/10":"bg-primary/5 border border-primary/15"}`}>
+            <div className={`rounded-xl px-3 py-2.5 mb-1 ${isMine?"bg-primary-foreground/15":"bg-primary/5 border border-primary/15"}`}>
               <span className="text-base mr-1.5">💌</span>
               {msg.decryptedContent.split("\n").map((line,i) => (
                 <span key={i} className={`block ${i===0?"font-semibold text-[13px]":"text-[13px] leading-relaxed mt-1 opacity-90"}`}>
@@ -314,11 +360,11 @@ const MessageBubble = ({
           {/* Image */}
           {msg.message_type==="image" && msg.file_url && (
             mediaVisible!==false ? (
-              <img onClick={() => onPhotoView(msg.file_url!)} src={msg.file_url} alt="shared"
+              <img onClick={() => { hapticLight(); onPhotoView(msg.file_url!); }} src={msg.file_url} alt="shared"
                 className="rounded-xl mb-1 max-h-44 object-cover w-full cursor-pointer active:scale-[0.98] transition-transform" />
             ) : (
-              <button onClick={() => onPhotoView(msg.file_url!)}
-                className={`flex items-center gap-2 mb-1 rounded-xl px-3 py-2.5 w-full ${isMine?"bg-background/10":"bg-muted/50"}`}>
+              <button onClick={() => { hapticLight(); onPhotoView(msg.file_url!); }}
+                className={`flex items-center gap-2 mb-1 rounded-xl px-3 py-2.5 w-full ${isMine?"bg-primary-foreground/15":"bg-muted/50"}`}>
                 <ImageIcon className="h-4 w-4 shrink-0 opacity-50" />
                 <span className="text-xs opacity-60">Photo — tap to view</span>
               </button>
@@ -327,7 +373,7 @@ const MessageBubble = ({
           {/* File */}
           {msg.message_type==="file" && msg.file_name && (
             <a href={msg.file_url||"#"} target="_blank" rel="noopener"
-              className={`flex items-center gap-2 mb-1 rounded-lg px-2 py-1.5 ${isMine?"bg-background/10":"bg-muted/50"}`}>
+              className={`flex items-center gap-2 mb-1 rounded-lg px-2 py-1.5 ${isMine?"bg-primary-foreground/15":"bg-muted/50"}`}>
               <FileText className="h-3.5 w-3.5 shrink-0 opacity-50" />
               <span className="text-xs truncate">{msg.file_name}</span>
             </a>
@@ -339,20 +385,21 @@ const MessageBubble = ({
           <div className={`flex items-center gap-1 mt-0.5 ${isMine?"justify-end":""}`}>
             {isDisappearing && <Timer className="h-2.5 w-2.5 opacity-30" />}
             {msg.edited_at && <Pencil className="h-2 w-2 opacity-30" />}
-            <span className={`text-[10px] ${isMine?"text-background/40":"text-muted-foreground/60"}`}>
+            <span className={`text-[10px] font-mono ${isMine?"text-primary-foreground/70":"text-muted-foreground/60"}`}>
               {formatTime(msg.created_at)}
             </span>
             {isMine && <MessageStatus isRead={msg.is_read} isMine={isMine} />}
           </div>
-          <MessageReactions messageId={msg.id} userId={userId} isMine={isMine} allReactions={allReactions} />
+          <MessageReactions messageId={msg.id} userId={userId} isMine={isMine} allReactions={allReactions}
+            pickerOpen={isReactingTo} onPickerClose={onReactionPickerClose} />
         </div>
         {!isMine && (
-          <button onClick={onReply} aria-label="Reply to this message"
+          <button onClick={() => { hapticLight(); onReply(); }} aria-label="Reply to this message"
             className="h-6 w-6 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all text-muted-foreground hover:text-foreground mb-1">
             <Reply className="h-3 w-3" aria-hidden="true" />
           </button>
         )}
-      </div>
+      </motion.div>
     </motion.div>
   );
 };
@@ -395,6 +442,7 @@ const Chat = () => {
   const typingTimeoutRef  = useRef<ReturnType<typeof setTimeout>|null>(null);
   const lastTypingRef     = useRef<number>(0);
   const presenceChannelRef = useRef<ReturnType<typeof supabase.channel>|null>(null);
+  const { ensure: ensureMedia, permissionSheet } = useMediaPermission();
   const fileInputRef    = useRef<HTMLInputElement>(null);
   const imageInputRef   = useRef<HTMLInputElement>(null);
   const cameraInputRef  = useRef<HTMLInputElement>(null);
@@ -406,10 +454,21 @@ const Chat = () => {
   // FIX: cancel flag for mic button race condition
   const recordingCancelledRef = useRef(false);
   const { chatWallpaper, colorMode, appName, appIcon } = useTheme();
+  // The Dynamic Sky wallpaper (src/lib/dynamicSky.ts) is computed fresh from
+  // the current time on every render — this just forces a render once a
+  // minute so it keeps drifting even during an idle chat with no new
+  // messages or other state changes to naturally trigger a re-paint.
+  const [, forceSkyTick] = useState(0);
+  useEffect(() => {
+    if (chatWallpaper !== "w-dynamic-sky") return;
+    const id = setInterval(() => forceSkyTick(t => t + 1), 60_000);
+    return () => clearInterval(id);
+  }, [chatWallpaper]);
   const { user } = useAuth();
   const { ready: e2eReady, encrypt, decrypt } = useE2E(user?.id, partnerId);
   const { toast } = useToast();
   const [contextMenuMsg, setContextMenuMsg] = useState<DecryptedMessage|null>(null);
+  const [reactingMsgId, setReactingMsgId] = useState<string|null>(null);
   const allReactions = useReactionsChannel(user?.id, partnerId);
   const [showSchedulePicker, setShowSchedulePicker] = useState(false);
   const [showLoveLetter, setShowLoveLetter]   = useState(false);
@@ -454,6 +513,10 @@ const Chat = () => {
       decryptedContent: (msg.message_type==="text" || msg.message_type==="letter")
         ? await decrypt(msg.content)
         : msg.content,
+      // BUG FIX: file_url was stored as a getPublicUrl() output against the
+      // private "chat-files" bucket, which 403s — every image/voice/file
+      // attachment rendered broken. Resolve to a real signed URL here.
+      file_url: msg.file_url ? await resolveSignedUrl("chat-files", msg.file_url) : msg.file_url,
     })));
   }, [decrypt]);
 
@@ -616,7 +679,8 @@ const Chat = () => {
       seenIds.add(msg.id);
       const decrypted = (msg.message_type==="text"||msg.message_type==="letter")
         ? await decrypt(msg.content) : msg.content;
-      const dm: DecryptedMessage = { ...msg, decryptedContent: decrypted };
+      const resolvedFileUrl = msg.file_url ? await resolveSignedUrl("chat-files", msg.file_url) : msg.file_url;
+      const dm: DecryptedMessage = { ...msg, decryptedContent: decrypted, file_url: resolvedFileUrl };
       setMessages(prev => [...prev, dm]);
       if (msg.sender_id !== user.id) {
         // Nudge flash
@@ -625,7 +689,7 @@ const Chat = () => {
           hapticMedium();
           setTimeout(() => setNudgeFlash(false), 1500);
         }
-        playMessageSound(); hapticMessageReceived();
+        playMessageSound();
         if (decrypted) {
           const loveEmojis = ["❤️","♥️","💕","💖","💗","😍","🥰","💘","💝"];
           for (const e of loveEmojis) { if (decrypted.includes(e)) { dispatchEmojiEffect(e); break; } }
@@ -894,7 +958,18 @@ const Chat = () => {
     if (partnerId && !e2eReady) {
       toast({ title:"Securing connection…", description:"Please wait a moment." }); return;
     }
-    const text = message;
+    // "/silent your text" sends normally but skips the push notification —
+    // the recipient still sees it next time they open the app/chat.
+    let text = message;
+    let isSilent = false;
+    const silentMatch = text.match(/^\/silent\s+([\s\S]+)/i);
+    if (silentMatch) {
+      isSilent = true;
+      text = silentMatch[1];
+    } else if (/^\/silent\s*$/i.test(text.trim())) {
+      // "/silent" with nothing after it — nothing to actually send.
+      return;
+    }
     // FIX AUDIT #15: deduplicate sends — prevent double-send on rapid tap or reconnect
     const dedupKey = `${user.id}-${text.slice(0, 20)}-${Date.now()}`;
     if (!sendDedup.tryAcquire(dedupKey)) return;
@@ -908,7 +983,8 @@ const Chat = () => {
       const { error } = await supabase.from("messages").insert({
         sender_id:user.id, receiver_id:partnerId, content:enc, message_type:"text",
         reply_to_id:rep?.id||null, disappear_at:disappearMode?"pending":null,
-      });
+        silent: isSilent,
+      } as any);
       if (error) {
         logError("Chat.handleSend", "insert failed", error);
         toast({ title:"Failed to send", variant:"destructive" });
@@ -1061,7 +1137,7 @@ const Chat = () => {
       await joinCall(data.url, tokenData.token, mode === "voice");
       toast({ title:mode==="video"?"Video call started 📹":"Voice call started 📞" });
     } catch (err: unknown) {
-      toast({ title:"Call failed", description:(err instanceof Error ? err.message : String(err)), variant:"destructive" });
+      toast({ title:"Call failed", description: extractErrorMessage(err), variant:"destructive" });
     }
     setIsStartingCall(false);
   };
@@ -1075,7 +1151,7 @@ const Chat = () => {
       // CALL-02 FIX: use videoOff flag instead of toggleVideo() after join
       await joinCall(roomUrl, tokenData.token, callType === "voice");
       toast({ title:"Call connected 📞" });
-    } catch (err: unknown) { toast({ title:"Couldn't join call", description:(err instanceof Error ? err.message : String(err)), variant:"destructive" }); }
+    } catch (err: unknown) { toast({ title:"Couldn't join call", description: extractErrorMessage(err), variant:"destructive" }); }
     setIsStartingCall(false);
   }, [joinCall, isStartingCall, toast]);
 
@@ -1153,8 +1229,8 @@ const Chat = () => {
           <p className="text-base font-semibold text-foreground">Call failed</p>
           {callError && <p className="text-sm text-muted-foreground">{callError}</p>}
         </div>
-        <button onClick={leaveCall}
-          className="h-11 px-6 rounded-full bg-foreground text-background text-sm font-medium">
+        <button onClick={() => { hapticMedium(); leaveCall(); }}
+          className="h-11 px-6 rounded-full bg-primary text-primary-foreground text-sm font-medium">
           Back to chat
         </button>
       </motion.div>
@@ -1193,14 +1269,14 @@ const Chat = () => {
         </motion.div>
         <div className="absolute top-4 left-4 right-28 z-10 flex items-center gap-2 safe-top">
           <div className="bg-background/15 backdrop-blur-md rounded-full px-3 py-1.5 flex items-center gap-1.5">
-            <div className={`h-1.5 w-1.5 rounded-full ${callNetworkQuality==="excellent"||callNetworkQuality==="good"?"bg-green-400":callNetworkQuality==="fair"?"bg-yellow-400":"bg-red-400"}`} />
+            <div className={`h-1.5 w-1.5 rounded-full ${callNetworkQuality==="excellent"||callNetworkQuality==="good"?"bg-success":callNetworkQuality==="fair"?"bg-warning":"bg-destructive"}`} />
             <span className="text-[11px] text-background/80 font-mono">{formatCallDuration(callDuration)}</span>
           </div>
           {isScreenSharing && <div className="bg-primary/60 backdrop-blur-md rounded-full px-3 py-1.5 flex items-center gap-1"><Monitor className="h-3 w-3 text-background" /><span className="text-[10px] text-background">Sharing</span></div>}
-          <button onClick={() => setShowLipReading(v=>!v)}
+          <button onClick={() => { hapticLight(); setShowLipReading(v=>!v); }}
             aria-label={showLipReading ? "Disable lip reading" : "Enable lip reading"}
             aria-pressed={showLipReading}
-            className={`ml-auto rounded-full px-3 py-1.5 flex items-center gap-1.5 backdrop-blur-md transition-colors ${showLipReading?"bg-green-500/80":"bg-background/15"}`}>
+            className={`ml-auto rounded-full px-3 py-1.5 flex items-center gap-1.5 backdrop-blur-md transition-colors ${showLipReading?"bg-success/85":"bg-background/15"}`}>
             <Captions className="h-3.5 w-3.5 text-background" aria-hidden="true" />
             <span className="text-[10px] text-background font-medium">{showLipReading?"Reading":"Lip Read"}</span>
           </button>
@@ -1210,25 +1286,25 @@ const Chat = () => {
         </AnimatePresence>
         <div className="absolute bottom-10 left-0 right-0 z-10 safe-bottom" role="toolbar" aria-label="Call controls">
           <div className="flex items-center justify-center gap-4">
-            <button onClick={toggleAudio}
+            <button onClick={() => { hapticMedium(); toggleAudio(); }}
               aria-label={isAudioOn ? "Mute microphone" : "Unmute microphone"}
               aria-pressed={!isAudioOn}
               className={`h-12 w-12 rounded-full flex items-center justify-center transition-colors ${isAudioOn?"bg-background/15 backdrop-blur-md":"bg-destructive"}`}>
               {isAudioOn?<Mic className="h-5 w-5 text-background" aria-hidden="true" />:<MicOff className="h-5 w-5 text-background" aria-hidden="true" />}
             </button>
-            <button onClick={toggleVideo}
+            <button onClick={() => { hapticMedium(); toggleVideo(); }}
               aria-label={isVideoOn ? "Turn off camera" : "Turn on camera"}
               aria-pressed={!isVideoOn}
               className={`h-12 w-12 rounded-full flex items-center justify-center transition-colors ${isVideoOn?"bg-background/15 backdrop-blur-md":"bg-destructive"}`}>
               {isVideoOn?<Video className="h-5 w-5 text-background" aria-hidden="true" />:<VideoOff className="h-5 w-5 text-background" aria-hidden="true" />}
             </button>
-            <button onClick={toggleScreenShare}
+            <button onClick={() => { hapticMedium(); toggleScreenShare(); }}
               aria-label={isScreenSharing ? "Stop screen share" : "Start screen share"}
               aria-pressed={isScreenSharing}
               className={`h-12 w-12 rounded-full flex items-center justify-center transition-colors ${isScreenSharing?"bg-primary":"bg-background/15 backdrop-blur-md"}`}>
               {isScreenSharing?<MonitorOff className="h-5 w-5 text-background" aria-hidden="true" />:<Monitor className="h-5 w-5 text-background" aria-hidden="true" />}
             </button>
-            <button onClick={endCall}
+            <button onClick={() => { hapticMedium(); endCall(); }}
               aria-label="End call"
               className="h-14 w-14 rounded-full bg-destructive flex items-center justify-center shadow-lg">
               <PhoneOff className="h-6 w-6 text-background" aria-hidden="true" />
@@ -1239,8 +1315,18 @@ const Chat = () => {
     );
   }
 
+  const rootWallpaperCss = chatWallpaper ? resolveWallpaperStyle(chatWallpaper, colorMode) : null;
+  const rootBackgroundStyle = rootWallpaperCss
+    ? {
+        background: disappearMode
+          ? `linear-gradient(rgba(0,0,0,0.25), rgba(0,0,0,0.25)), ${rootWallpaperCss}`
+          : rootWallpaperCss,
+      }
+    : undefined;
+
   return (
-    <div data-vanish={disappearMode ? "on" : "off"} className="chat-root flex flex-col h-[100dvh] bg-background overflow-hidden transition-colors duration-500">
+    <div className="flex flex-col h-[100dvh] bg-background overflow-hidden" style={rootBackgroundStyle}>
+      <ChatSurpriseHost />
       <IncomingCallOverlay onAccept={handleAcceptIncoming} onDecline={handleDeclineIncoming} />
 
       {/* Nudge flash overlay */}
@@ -1254,10 +1340,16 @@ const Chat = () => {
       </AnimatePresence>
 
       {/* Header */}
-      <header className="safe-top px-4 pt-3 pb-2.5 bg-background border-b border-border/40 sticky top-0 z-10">
+      <header className="safe-top px-4 pt-3 pb-2.5 bg-background/90 backdrop-blur-md border-b border-border/25 sticky top-0 z-20">
         <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2.5">
-            <div className="h-9 w-9 rounded-full bg-muted flex items-center justify-center overflow-hidden">
+          <motion.button
+            whileTap={{ scale: 0.97 }}
+            onClick={() => { hapticLight(); navigate("/profile"); }}
+            onPointerDown={() => routePreload["/profile"]?.().catch(() => {})}
+            className="flex items-center gap-2.5 min-w-0 -ml-1 pl-1 pr-1.5 py-1 rounded-xl active:bg-muted/40 transition-colors"
+            aria-label="Open profile"
+          >
+            <div className="h-9 w-9 rounded-full bg-muted flex items-center justify-center overflow-hidden shrink-0">
               {partnerAvatar ? (
                 <img src={partnerAvatar} alt="" className="h-full w-full object-cover" />
               ) : appIcon ? (
@@ -1266,36 +1358,29 @@ const Chat = () => {
                 <span className="text-[10px] font-semibold text-muted-foreground">{appName.slice(0,2).toUpperCase()}</span>
               )}
             </div>
-            <div>
+            <div className="min-w-0 text-left">
               <h1 className="text-sm font-semibold text-foreground leading-tight flex items-center gap-1.5">
-                {partnerId ? partnerName : appName}
+                <span className="truncate">{partnerId ? partnerName : appName}</span>
                 {disappearMode && (
                   <span title={`Disappearing messages: ${DISAPPEAR_OPTIONS.find(o=>o.value===disappearMs)?.label ?? ""}`}
-                    className="inline-flex items-center gap-0.5 bg-primary/15 text-primary text-[9px] font-semibold px-1.5 py-0.5 rounded-full">
+                    className="inline-flex items-center gap-0.5 bg-primary/15 text-primary text-[9px] font-semibold px-1.5 py-0.5 rounded-full shrink-0">
                     <Timer className="h-2.5 w-2.5" /> ON
                   </span>
                 )}
               </h1>
-              <p className="text-[11px] text-muted-foreground leading-tight">
+              <p className="text-[11px] text-muted-foreground leading-tight truncate">
                 {partnerTyping?"typing...":partnerOnline?"🟢 online":e2eReady?"end-to-end encrypted":partnerId?"securing…":"Link a partner in settings"}
               </p>
             </div>
-          </div>
+            <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/60 shrink-0" aria-hidden="true" />
+          </motion.button>
           <div className="flex items-center gap-1">
-            {/* Nudge button */}
-            {partnerId && (
-              <button onClick={sendNudge}
-                aria-label="Send nudge"
-                className="h-9 w-9 rounded-full flex items-center justify-center text-muted-foreground hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-colors">
-                <Heart className="h-[17px] w-[17px]" aria-hidden="true" />
-              </button>
-            )}
-            <button onClick={() => startCall("video")} disabled={isStartingCall||!partnerId}
+            <button onClick={() => { hapticMedium(); startCall("video"); }} disabled={isStartingCall||!partnerId}
               aria-label="Start video call"
               className="h-9 w-9 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors disabled:opacity-30">
               <Video className="h-[18px] w-[18px]" aria-hidden="true" />
             </button>
-            <button onClick={() => startCall("voice")} disabled={isStartingCall||!partnerId}
+            <button onClick={() => { hapticMedium(); startCall("voice"); }} disabled={isStartingCall||!partnerId}
               aria-label="Start voice call"
               className="h-9 w-9 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors disabled:opacity-30">
               <Phone className="h-[17px] w-[17px]" aria-hidden="true" />
@@ -1307,20 +1392,25 @@ const Chat = () => {
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-48 rounded-xl border-border/50">
-                <DropdownMenuItem onClick={() => { setSearchOpen(!searchOpen); setSearchQuery(""); if(!searchOpen) setTimeout(()=>searchInputRef.current?.focus(),100); }}>
+                {partnerId && (
+                  <DropdownMenuItem onClick={() => { hapticMedium(); sendNudge(); }}>
+                    <Heart className="h-4 w-4 mr-2.5" /> Send nudge
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuItem onClick={() => { hapticLight(); setSearchOpen(!searchOpen); setSearchQuery(""); if(!searchOpen) setTimeout(()=>searchInputRef.current?.focus(),100); }}>
                   <Search className="h-4 w-4 mr-2.5" /> Search
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => disappearMode ? setDisappearMode(false) : setShowDisappearSheet(true)}>
+                <DropdownMenuItem onClick={() => { hapticLight(); disappearMode ? setDisappearMode(false) : setShowDisappearSheet(true); }}>
                   {disappearMode ? <Timer className="h-4 w-4 mr-2.5" /> : <TimerOff className="h-4 w-4 mr-2.5" />}
                   {disappearMode ? "Disable disappearing" : "Disappearing messages"}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => navigate("/settings")}>Settings</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => { hapticLight(); navigate("/settings"); }}>Settings</DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={recoverChat}>
+                <DropdownMenuItem onClick={() => { hapticMedium(); recoverChat(); }}>
                   <Reply className="h-4 w-4 mr-2.5" /> Recover chat
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setShowClearDialog(true)} className="text-destructive focus:text-destructive">
+                <DropdownMenuItem onClick={() => { hapticWarning(); setShowClearDialog(true); }} className="text-destructive focus:text-destructive">
                   <Trash2 className="h-4 w-4 mr-2.5" /> Clear chat
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -1339,11 +1429,11 @@ const Chat = () => {
                 {searchResults.length>0 && (
                   <div className="flex items-center gap-1">
                     <span className="text-[10px] text-muted-foreground whitespace-nowrap">{searchIndex+1}/{searchResults.length}</span>
-                    <button onClick={() => setSearchIndex(i=>Math.max(0,i-1))} aria-label="Previous match" className="h-6 w-6 flex items-center justify-center text-muted-foreground"><ChevronUp className="h-3.5 w-3.5" aria-hidden="true" /></button>
-                    <button onClick={() => setSearchIndex(i=>Math.min(searchResults.length-1,i+1))} aria-label="Next match" className="h-6 w-6 flex items-center justify-center text-muted-foreground"><ChevronDown className="h-3.5 w-3.5" aria-hidden="true" /></button>
+                    <button onClick={() => { hapticTick(); setSearchIndex(i=>Math.max(0,i-1)); }} aria-label="Previous match" className="h-6 w-6 flex items-center justify-center text-muted-foreground"><ChevronUp className="h-3.5 w-3.5" aria-hidden="true" /></button>
+                    <button onClick={() => { hapticTick(); setSearchIndex(i=>Math.min(searchResults.length-1,i+1)); }} aria-label="Next match" className="h-6 w-6 flex items-center justify-center text-muted-foreground"><ChevronDown className="h-3.5 w-3.5" aria-hidden="true" /></button>
                   </div>
                 )}
-                <button onClick={() => { setSearchOpen(false); setSearchQuery(""); }} aria-label="Close search" className="h-6 w-6 flex items-center justify-center text-muted-foreground"><X className="h-3.5 w-3.5" aria-hidden="true" /></button>
+                <button onClick={() => { hapticLight(); setSearchOpen(false); setSearchQuery(""); }} aria-label="Close search" className="h-6 w-6 flex items-center justify-center text-muted-foreground"><X className="h-3.5 w-3.5" aria-hidden="true" /></button>
               </div>
             </motion.div>
           )}
@@ -1366,7 +1456,7 @@ const Chat = () => {
               <span className="text-[10px] text-primary font-medium">
                 Disappear after {DISAPPEAR_OPTIONS.find(o=>o.value===disappearMs)?.label||"30 seconds"} • Tap timer to change
               </span>
-              <button onClick={() => setShowDisappearSheet(true)} className="ml-1 text-[10px] text-primary underline">change</button>
+              <button onClick={() => { hapticLight(); setShowDisappearSheet(true); }} className="ml-1 text-[10px] text-primary underline">change</button>
             </div>
           </motion.div>
         )}
@@ -1378,21 +1468,10 @@ const Chat = () => {
         aria-live="polite"
         aria-relevant="additions"
         aria-label="Conversation messages"
-        className="flex-1 overflow-y-auto px-3 py-3 min-h-0 transition-[background] duration-500"
-        style={(() => {
-          const wallpaperCss = chatWallpaper ? resolveWallpaperStyle(chatWallpaper, colorMode) : null;
-          if (disappearMode) {
-            // Layer a dark tint over the wallpaper (or stand alone if no
-            // wallpaper is set) — a fixed, deliberate visual cue that
-            // disappearing messages are on, mirroring Instagram's Vanish
-            // Mode darkening the whole screen while it's active.
-            return { background: `linear-gradient(rgba(0,0,0,0.25), rgba(0,0,0,0.25))${wallpaperCss ? `, ${wallpaperCss}` : ""}` };
-          }
-          return wallpaperCss ? { background: wallpaperCss } : undefined;
-        })()}>
+        className="flex-1 overflow-y-auto px-3 py-3 min-h-0">
         {hasMoreMessages && (
           <div className="flex justify-center mb-3">
-            <button onClick={loadMoreMessages} disabled={loadingMore}
+            <button onClick={() => { hapticTick(); loadMoreMessages(); }} disabled={loadingMore}
               className="text-[11px] text-muted-foreground bg-muted/50 px-4 py-1.5 rounded-full active:scale-95 transition-transform disabled:opacity-50">
               {loadingMore?"Loading…":"Load older messages"}
             </button>
@@ -1402,7 +1481,7 @@ const Chat = () => {
         {messagesError && !messagesLoading && (
           <div className="flex flex-col items-center gap-2 my-8">
             <p className="text-xs text-muted-foreground text-center">{messagesError}</p>
-            <button onClick={() => fetchMessages()} className="text-[11px] text-primary underline">Retry</button>
+            <button onClick={() => { hapticLight(); fetchMessages(); }} className="text-[11px] text-primary underline">Retry</button>
           </div>
         )}
         {groupedTimeline.map(group => (
@@ -1411,6 +1490,7 @@ const Chat = () => {
               <span className="text-[10px] text-muted-foreground bg-muted/50 backdrop-blur-sm px-3 py-1 rounded-full">{group.date}</span>
             </div>
             <div className="space-y-0.5">
+              <AnimatePresence initial={false}>
               {group.items.map((item, idx) => {
                 if (item.type==="call") {
                   const c = item.data;
@@ -1459,9 +1539,11 @@ const Chat = () => {
                     onLongPress={() => setContextMenuMsg(msg)}
                     onPhotoView={url=>setViewingPhoto(url)}
                     formatTime={formatTime} allReactions={allReactions} mediaVisible={mediaVisible}
+                    isReactingTo={reactingMsgId===msg.id} onReactionPickerClose={() => setReactingMsgId(null)}
                   />
                 );
               })}
+              </AnimatePresence>
             </div>
           </div>
         ))}
@@ -1482,15 +1564,15 @@ const Chat = () => {
         {showAttach && !isRecording && (
           <motion.div initial={{ opacity:0,y:8,scale:0.98 }} animate={{ opacity:1,y:0,scale:1 }} exit={{ opacity:0,y:8,scale:0.98 }}
             transition={{ type: "spring", stiffness: 380, damping: 28 }}
-            className="mx-4 mb-2 bg-card border border-border/60 rounded-2xl p-3 shadow-sm flex gap-3">
+            className="mx-4 mb-2 bg-card/90 backdrop-blur-md border border-border/20 rounded-2xl p-3 flex gap-3">
             {[
-              { label: "Photo",  icon: ImageIcon, color: "bg-blue-500",   onClick: () => imageInputRef.current?.click() },
-              { label: "Camera", icon: Camera,    color: "bg-rose-500",   onClick: () => cameraInputRef.current?.click() },
-              { label: "File",   icon: FileText,  color: "bg-violet-500", onClick: () => fileInputRef.current?.click() },
-            ].map(({ label, icon: Icon, color, onClick }) => (
-              <button key={label} onClick={onClick} className="flex flex-col items-center gap-1.5 flex-1 active:scale-95 transition-transform">
-                <span className={`h-11 w-11 rounded-full flex items-center justify-center ${color}`}>
-                  <Icon className="h-5 w-5 text-white" />
+              { label: "Photo",  icon: ImageIcon, onClick: async () => { if (await ensureMedia("photos", () => imageInputRef.current?.click())) imageInputRef.current?.click(); } },
+              { label: "Camera", icon: Camera,    onClick: async () => { if (await ensureMedia("camera", () => cameraInputRef.current?.click())) cameraInputRef.current?.click(); } },
+              { label: "File",   icon: FileText,  onClick: async () => { if (await ensureMedia("files", () => fileInputRef.current?.click())) fileInputRef.current?.click(); } },
+            ].map(({ label, icon: Icon, onClick }) => (
+              <button key={label} onClick={() => { hapticLight(); onClick(); }} className="flex flex-col items-center gap-1.5 flex-1 active:scale-95 transition-transform group">
+                <span className="h-11 w-11 rounded-full flex items-center justify-center bg-muted group-hover:bg-accent/15 transition-colors">
+                  <Icon className="h-5 w-5 text-foreground/70 group-hover:text-accent transition-colors" />
                 </span>
                 <span className="text-[11px] text-muted-foreground">{label}</span>
               </button>
@@ -1511,10 +1593,10 @@ const Chat = () => {
       <AnimatePresence>
         {editingMsg && (
           <motion.div initial={{ height:0,opacity:0 }} animate={{ height:"auto",opacity:1 }} exit={{ height:0,opacity:0 }}
-            className="px-4 py-2 bg-blue-500/10 border-t border-blue-500/20 flex items-center gap-2">
-            <Pencil className="h-3.5 w-3.5 text-blue-500 shrink-0" />
-            <span className="text-[11px] text-blue-600 flex-1 truncate">Editing message</span>
-            <button onClick={() => { setEditingMsg(null); setEditText(""); setMessage(""); }} aria-label="Cancel edit">
+            className="px-4 py-2 bg-info/10 border-t border-info/20 flex items-center gap-2">
+            <Pencil className="h-3.5 w-3.5 text-info shrink-0" />
+            <span className="text-[11px] text-info flex-1 truncate">Editing message</span>
+            <button onClick={() => { hapticLight(); setEditingMsg(null); setEditText(""); setMessage(""); }} aria-label="Cancel edit">
               <X className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
             </button>
           </motion.div>
@@ -1522,7 +1604,12 @@ const Chat = () => {
       </AnimatePresence>
 
       {/* Input area */}
-      <div className="px-3 pb-3 pt-1.5 safe-bottom bg-background shrink-0">
+      {/* BUG FIX: this had no z-index, so DisappearGestureHandle's full-viewport
+          dim overlay (fixed inset-0 z-30, up to ~55-60% black) rendered visually
+          on top of it whenever Vanish Mode is on or mid-drag — the whole compose
+          bar (message box, attach, mic) looked covered by a black box. The dim
+          is meant to darken the chat above, not the input controls themselves. */}
+      <div className="relative z-40 px-3 pb-3 pt-1.5 safe-bottom bg-background/90 backdrop-blur-md border-t border-border/25 shrink-0">
         <div className="flex justify-center">
           <DisappearGestureHandle
             steps={DISAPPEAR_OPTIONS}
@@ -1548,64 +1635,70 @@ const Chat = () => {
               ))}
             </div>
             <span className="text-sm font-medium text-destructive flex-1">{formatRecTime(recordingTime)}</span>
-            <button onClick={cancelRecording} aria-label="Cancel voice recording" className="h-8 w-8 rounded-full bg-muted flex items-center justify-center"><Trash2 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" /></button>
-            <button onClick={stopRecording} aria-label="Send voice recording" className="h-8 w-8 rounded-full bg-foreground flex items-center justify-center"><Send className="h-3.5 w-3.5 text-background" aria-hidden="true" /></button>
+            <button onClick={() => { hapticWarning(); cancelRecording(); }} aria-label="Cancel voice recording" className="h-8 w-8 rounded-full bg-muted flex items-center justify-center"><Trash2 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" /></button>
+            <button onClick={() => { hapticSend(); stopRecording(); }} aria-label="Send voice recording" className="h-8 w-8 rounded-full bg-primary flex items-center justify-center"><Send className="h-3.5 w-3.5 text-primary-foreground" aria-hidden="true" /></button>
           </motion.div>
         ) : (
-          <div className="flex items-end gap-2">
-            <div className="flex-1 flex items-end gap-1 bg-muted/40 rounded-3xl border border-border/40 px-2 py-1.5 backdrop-blur-md shadow-sm">
-              <button onClick={() => setShowAttach(!showAttach)}
+          <div className="flex items-center gap-1.5">
+            <div className="flex-1 flex items-center gap-1 bg-muted/40 backdrop-blur-md rounded-full border border-border/20 px-2 py-1">
+              <button onClick={() => { hapticLight(); setShowAttach(!showAttach); }}
                 aria-label="Attachments"
                 aria-expanded={showAttach}
-                className="h-9 w-9 rounded-full flex items-center justify-center shrink-0 text-muted-foreground hover:text-foreground transition-colors self-end">
-                <Paperclip className="h-[18px] w-[18px]" aria-hidden="true" />
+                className="h-8 w-8 rounded-full flex items-center justify-center shrink-0 text-muted-foreground hover:text-foreground transition-colors">
+                <Paperclip className="h-4 w-4" aria-hidden="true" />
               </button>
-              <textarea
-                ref={inputRef as unknown as React.RefObject<HTMLTextAreaElement>}
-                value={message}
-                rows={1}
+              <input ref={inputRef} type="text" value={message}
                 aria-label="Message"
-                onChange={e => {
-                  setMessage(e.target.value);
-                  broadcastTyping();
-                  if (editingMsg) setEditText(e.target.value);
-                  const el = e.currentTarget;
-                  el.style.height = "auto";
-                  el.style.height = Math.min(el.scrollHeight, 140) + "px";
-                }}
-                onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-                placeholder={editingMsg ? "Edit message..." : replyTo ? "Reply..." : "Message"}
-                className="flex-1 bg-transparent text-[15px] leading-[1.35] outline-none placeholder:text-muted-foreground/60 py-2 resize-none max-h-[140px] min-h-[24px] w-full"
-              />
+                onChange={e => { setMessage(e.target.value); broadcastTyping(); if(editingMsg) setEditText(e.target.value); }}
+                onKeyDown={e => e.key==="Enter" && handleSend()}
+                placeholder={editingMsg?"Edit message...":replyTo?"Reply...":"Message · /silent for no notification"}
+                className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground/60 py-1.5" />
+              {/^\/silent(\s|$)/i.test(message) && (
+                <span className="text-[10px] text-muted-foreground/70 shrink-0 pr-1 flex items-center gap-0.5">
+                  <BellOff className="h-3 w-3" aria-hidden="true" /> silent
+                </span>
+              )}
             </div>
             {message.trim() ? (
-              <motion.button initial={{ scale:0 }} animate={{ scale:1 }} onClick={handleSend}
+              <motion.button initial={{ scale:0 }} animate={{ scale:1 }} onClick={() => { handleSend(); }}
                 aria-label={editingMsg ? "Save edit" : "Send message"}
-                className="h-11 w-11 rounded-full bg-primary flex items-center justify-center shrink-0 shadow-md">
-                {editingMsg ? <Check className="h-[18px] w-[18px] text-primary-foreground" aria-hidden="true" /> : <Send className="h-[18px] w-[18px] text-primary-foreground" aria-hidden="true" />}
+                className="h-10 w-10 rounded-full bg-primary flex items-center justify-center shrink-0">
+                {editingMsg ? <Check className="h-4 w-4 text-primary-foreground" aria-hidden="true" /> : <Send className="h-4 w-4 text-primary-foreground" aria-hidden="true" />}
               </motion.button>
             ) : (
               <button
-                onPointerDown={startRecording}
+                onPointerDown={(e) => {
+                  (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+                  startRecording();
+                }}
                 onPointerUp={stopRecording}
                 aria-label="Hold to record voice message"
-                onPointerLeave={() => { if (isRecording) cancelRecording(); }}
+                // Fix #Bug4: pointer events unify touch+mouse — no double-fire on Android/iOS.
+                // onMouseDown/onTouchStart both fired on mobile causing startRecording() twice.
+                // BUG FIX: onPointerLeave used to cancel the recording, but without
+                // setPointerCapture, natural finger drift off this small button during
+                // a hold gesture fired pointerleave almost instantly — every recording
+                // attempt got silently cancelled before release. Pointer capture routes
+                // move/up events to this element regardless of drift; pointercancel
+                // (a real interruption — e.g. an incoming call) is the correct signal
+                // to cancel, not the finger simply wandering off the button's bounds.
+                onPointerCancel={() => { if (isRecording) cancelRecording(); }}
                 style={{ touchAction: "none" }}
-                className="h-11 w-11 rounded-full bg-foreground flex items-center justify-center shrink-0 active:scale-95 transition-transform">
-                <Mic className="h-[18px] w-[18px] text-background" aria-hidden="true" />
+                className="h-10 w-10 rounded-full bg-primary flex items-center justify-center shrink-0 active:scale-95 transition-transform">
+                <Mic className="h-4 w-4 text-primary-foreground" aria-hidden="true" />
               </button>
             )}
-            <HubButton onClick={() => setShowGridMenu(!showGridMenu)} isOpen={showGridMenu}
+            <HubButton onClick={() => { hapticMedium(); setShowGridMenu(!showGridMenu); }} isOpen={showGridMenu}
               onLongPress={message.trim() ? () => { setShowGridMenu(false); setShowSchedulePicker(true); } : undefined} />
           </div>
         )}
-
       </div>
 
       {/* Hidden inputs */}
       <input ref={imageInputRef} type="file" accept="image/*,video/*" className="hidden" onChange={e=>handleFileSelect(e,"image")} />
       <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={e=>handleFileSelect(e,"image")} />
       <input ref={fileInputRef} type="file" className="hidden" onChange={e=>handleFileSelect(e,"file")} />
+      {permissionSheet}
 
       {/* Disappearing timer sheet */}
       <Sheet open={showDisappearSheet} onOpenChange={setShowDisappearSheet}>
@@ -1613,7 +1706,7 @@ const Chat = () => {
           <SheetHeader className="mb-4"><SheetTitle className="text-base">Disappearing messages</SheetTitle></SheetHeader>
           <div className="space-y-2">
             {DISAPPEAR_OPTIONS.map(opt => (
-              <button key={opt.value} onClick={() => { setDisappearMs(opt.value); setDisappearMode(true); setShowDisappearSheet(false); }}
+              <button key={opt.value} onClick={() => { hapticSelection(); setDisappearMs(opt.value); setDisappearMode(true); setShowDisappearSheet(false); }}
                 className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border transition-colors ${
                   disappearMode && disappearMs===opt.value ? "bg-primary/10 border-primary/30" : "bg-card border-border/50"
                 }`}>
@@ -1621,7 +1714,7 @@ const Chat = () => {
                 {disappearMode && disappearMs===opt.value && <Check className="h-4 w-4 text-primary" />}
               </button>
             ))}
-            <button onClick={() => { setDisappearMode(false); setShowDisappearSheet(false); }}
+            <button onClick={() => { hapticLight(); setDisappearMode(false); setShowDisappearSheet(false); }}
               className="w-full flex items-center justify-between px-4 py-3 rounded-xl border border-border/50 bg-card transition-colors">
               <span className="text-sm text-muted-foreground">Off</span>
               {!disappearMode && <Check className="h-4 w-4 text-primary" />}
@@ -1638,7 +1731,7 @@ const Chat = () => {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel className="rounded-full text-xs h-8">Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={clearChat} className="rounded-full bg-destructive text-destructive-foreground text-xs h-8">Clear</AlertDialogAction>
+            <AlertDialogAction onClick={() => { hapticError(); clearChat(); }} className="rounded-full bg-destructive text-destructive-foreground text-xs h-8">Clear</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -1662,6 +1755,7 @@ const Chat = () => {
         onCopy={handleCopyMessage}
         onDelete={handleDeleteMessage}
         onReply={() => { if(contextMenuMsg){setReplyTo(contextMenuMsg);inputRef.current?.focus();} setContextMenuMsg(null); }}
+        onReact={() => { if(contextMenuMsg) setReactingMsgId(contextMenuMsg.id); setContextMenuMsg(null); }}
         onEdit={handleStartEdit}
         onPin={handlePin}
         isMine={contextMenuMsg?.sender_id===user?.id}

@@ -1,5 +1,5 @@
 -- QR cross-device pairing tokens.
--- Apply this to your Supabase project (linked as povhwwcswvfihmcdqgyv) via:
+-- Apply this to your Supabase project (linked as jzlpelxwzjjpddqcrtpu) via:
 --   supabase db push
 -- or paste it into the SQL editor. It sits outside supabase/migrations/ because
 -- Lovable Cloud is not managing this project's migrations — your external

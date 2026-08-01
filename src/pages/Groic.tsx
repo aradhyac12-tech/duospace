@@ -26,6 +26,27 @@ const MOODS = [
 
 const RECENT_KEY = "groic-recent";
 
+// Rotating discovery queries so the default "Trending" section isn't the
+// same single hardcoded search every time — picks a different angle based
+// on time of day (and a bit of day-to-day variety) instead of one fixed string.
+const DISCOVERY_QUERIES = {
+  morning:   ["feel good morning playlist", "upbeat coffee music", "acoustic morning vibes"],
+  afternoon: ["trending music this week", "focus instrumental playlist", "chill afternoon mix"],
+  evening:   ["romantic evening playlist", "trending love songs", "sunset chill mix"],
+  night:     ["late night vibes playlist", "lofi late night beats", "cozy night in music"],
+};
+
+const pickDiscoveryQuery = () => {
+  const hour = new Date().getHours();
+  const bucket =
+    hour < 6 ? DISCOVERY_QUERIES.night :
+    hour < 12 ? DISCOVERY_QUERIES.morning :
+    hour < 18 ? DISCOVERY_QUERIES.afternoon :
+    hour < 22 ? DISCOVERY_QUERIES.evening :
+    DISCOVERY_QUERIES.night;
+  return bucket[Math.floor(Math.random() * bucket.length)];
+};
+
 const Groic = () => {
   const { playTrack, enqueue, sessionRole, partnerListening, startSession, endSession, current } = useGroic();
   const { toast } = useToast();
@@ -89,9 +110,10 @@ const Groic = () => {
     setLoading(false);
   }, [recent, toast]);
 
-  // Default: load a trending recommendation on first mount
+  // Default: load a discovery recommendation on first mount — rotates by
+  // time of day instead of always running the exact same fixed search.
   useEffect(() => {
-    if (results.length === 0) search("trending music 2026");
+    if (results.length === 0) search(pickDiscoveryQuery());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -116,8 +138,8 @@ const Groic = () => {
       <header className="safe-top px-5 pt-4 pb-3 sticky top-0 z-20 bg-background/85 backdrop-blur-xl border-b border-border/40">
         <div className="flex items-center gap-3 mb-3">
           <button onClick={() => { hapticLight(); navigate(-1); }}
-            className="h-8 w-8 rounded-full bg-accent/60 flex items-center justify-center active:scale-95" aria-label="Back">
-            <ChevronLeft className="h-4 w-4" />
+            className="h-10 w-10 rounded-full bg-accent/15 flex items-center justify-center active:scale-95" aria-label="Back">
+            <ChevronLeft className="h-5 w-5 text-accent" />
           </button>
           <div className="flex-1">
             <h1 className="text-lg font-semibold tracking-tight flex items-center gap-2">
@@ -211,7 +233,7 @@ const Groic = () => {
                 Try a different search, a mood above, or check your connection.
               </p>
               <Button size="sm" variant="outline" className="mt-4 rounded-full"
-                onClick={() => search(query || "trending music 2026")}>
+                onClick={() => search(query || pickDiscoveryQuery())}>
                 Try again
               </Button>
             </div>
@@ -231,7 +253,7 @@ const Groic = () => {
                       <button
                         onClick={() => onPlay(r)}
                         aria-label={`Play ${r.title}`}
-                        className="absolute bottom-2 right-2 h-9 w-9 rounded-full bg-foreground text-background flex items-center justify-center shadow-lg active:scale-90"
+                        className="absolute bottom-2 right-2 h-9 w-9 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-lg active:scale-90"
                       >
                         <Play className="h-4 w-4 ml-0.5" />
                       </button>

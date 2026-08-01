@@ -208,14 +208,14 @@ const CodeSurpriseEditor = ({ partnerId }: CodeSurpriseEditorProps) => {
               <p className="text-sm font-medium truncate">{s.title}</p>
               <p className="text-[10px] text-muted-foreground">{s.views_used}/{s.max_views} views • {s.is_active ? "Active" : "Paused"}</p>
             </div>
-            <div className="flex gap-1">
-              <button onClick={() => toggleActive(s)} aria-label={s.is_active ? "Deactivate surprise" : "Activate surprise"} className={`h-7 w-7 rounded-full flex items-center justify-center ${s.is_active ? "bg-primary/10" : "bg-muted"}`}>
+            <div className="flex gap-1.5">
+              <button onClick={() => toggleActive(s)} aria-label={s.is_active ? "Deactivate surprise" : "Activate surprise"} className={`h-9 w-9 rounded-full flex items-center justify-center ${s.is_active ? "bg-primary/10" : "bg-muted"}`}>
                 <Eye className={`h-3 w-3 ${s.is_active ? "text-primary" : "text-muted-foreground"}`} aria-hidden="true" />
               </button>
-              <button onClick={() => editSurprise(s)} aria-label="Edit surprise" className="h-7 w-7 rounded-full bg-muted flex items-center justify-center">
+              <button onClick={() => editSurprise(s)} aria-label="Edit surprise" className="h-9 w-9 rounded-full bg-muted flex items-center justify-center">
                 <Code2 className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
               </button>
-              <button onClick={() => deleteSurprise(s.id)} aria-label="Delete surprise" className="h-7 w-7 rounded-full bg-destructive/10 flex items-center justify-center">
+              <button onClick={() => deleteSurprise(s.id)} aria-label="Delete surprise" className="h-9 w-9 rounded-full bg-destructive/10 flex items-center justify-center">
                 <X className="h-3 w-3 text-destructive" aria-hidden="true" />
               </button>
             </div>
@@ -258,7 +258,7 @@ const CodeSurpriseEditor = ({ partnerId }: CodeSurpriseEditorProps) => {
                 <button onClick={runPreview} className="h-8 px-3 rounded-full bg-accent/60 flex items-center justify-center gap-1 text-xs font-medium text-foreground">
                   <Play className="h-3.5 w-3.5" /> Test
                 </button>
-                <button onClick={saveSurprise} className="h-8 px-3 rounded-full bg-foreground text-background flex items-center gap-1 text-xs font-medium">
+                <button onClick={saveSurprise} className="h-8 px-3 rounded-full bg-primary text-primary-foreground flex items-center gap-1 text-xs font-medium">
                   <Save className="h-3 w-3" /> Save
                 </button>
               </div>
@@ -274,8 +274,11 @@ const CodeSurpriseEditor = ({ partnerId }: CodeSurpriseEditorProps) => {
                   <button
                     key={preset.id}
                     onClick={() => applyPreset(preset.id)}
-                    className="shrink-0 rounded-full border border-border/50 bg-muted/40 px-3 py-1.5 text-[11px] font-medium text-foreground active:scale-95 transition-transform"
+                    className="shrink-0 flex items-center gap-1 rounded-full border border-border/50 bg-muted/40 px-3 py-1.5 text-[11px] font-medium text-foreground active:scale-95 transition-transform"
                   >
+                    {("reactive" in preset && (preset as any).reactive) && (
+                      <span className="h-1.5 w-1.5 rounded-full bg-primary" aria-hidden />
+                    )}
                     {preset.title}
                   </button>
                 ))}
@@ -287,7 +290,7 @@ const CodeSurpriseEditor = ({ partnerId }: CodeSurpriseEditorProps) => {
               <span className="text-[10px] text-muted-foreground">Max views:</span>
               {[1, 3, 5, 10, 999].map(n => (
                 <button key={n} onClick={() => { hapticLight(); setMaxViews(n); }}
-                  className={`h-6 px-2 rounded-full text-[10px] font-medium ${maxViews === n ? "bg-foreground text-background" : "bg-muted text-muted-foreground"}`}>
+                  className={`h-6 px-2 rounded-full text-[10px] font-medium ${maxViews === n ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
                   {n === 999 ? "∞" : n}
                 </button>
               ))}

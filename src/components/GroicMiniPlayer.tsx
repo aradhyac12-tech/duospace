@@ -60,7 +60,7 @@ const GroicMiniPlayer = () => {
             <button
               onClick={(e) => { e.stopPropagation(); hapticLight(); toggle(); }}
               aria-label={isPlaying ? "Pause" : "Play"}
-              className="h-9 w-9 rounded-full bg-foreground text-background flex items-center justify-center active:scale-90 transition-transform"
+              className="h-10 w-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center active:scale-90 transition-transform"
             >
               {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 ml-0.5" />}
             </button>

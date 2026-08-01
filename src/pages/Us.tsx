@@ -248,8 +248,8 @@ const Us = () => {
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.15 }} className="flex-1 min-h-0 overflow-y-auto overscroll-contain pb-24" style={{ WebkitOverflowScrolling: "touch" as any }}>
       <PageHeader title="Us" subtitle="Our little world">
-        <button onClick={() => navigate("/settings")} className="h-9 w-9 rounded-xl bg-accent flex items-center justify-center">
-          <Settings className="h-4 w-4 text-foreground" />
+        <button onClick={() => navigate("/settings")} aria-label="Settings" className="h-9 w-9 rounded-xl bg-accent flex items-center justify-center">
+          <Settings className="h-4 w-4 text-accent-foreground" aria-hidden="true" />
         </button>
       </PageHeader>
 
@@ -258,17 +258,17 @@ const Us = () => {
         <div className="bg-card rounded-2xl border border-border p-5 shadow-sm">
           <div className="flex items-center gap-4">
             <div className="relative">
-              <button onClick={() => setShowMoodDialog(true)}
+              <button onClick={() => setShowMoodDialog(true)} aria-label="Change your mood"
                 className="h-14 w-14 rounded-full bg-sand/50 flex items-center justify-center text-2xl shrink-0">
                 {partnerProfile?.mood_emoji || "😊"}
               </button>
               {/* F1: Online dot */}
-              <div className={`absolute bottom-0.5 right-0.5 h-3.5 w-3.5 rounded-full border-2 border-card ${partnerOnline ? "bg-green-400" : "bg-muted-foreground/30"}`} />
+              <div className={`absolute bottom-0.5 right-0.5 h-3.5 w-3.5 rounded-full border-2 border-card ${partnerOnline ? "bg-success" : "bg-muted-foreground/30"}`} />
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5">
                 <p className="text-sm font-medium">{partnerProfile?.pet_name || partnerProfile?.display_name || "Partner"}</p>
-                {partnerOnline && <span className="text-[10px] text-green-500 font-medium">● Online</span>}
+                {partnerOnline && <span className="text-[10px] text-success font-medium">● Online</span>}
               </div>
               <p className="text-xs text-muted-foreground truncate">
                 {partnerProfile?.mood_text || "No mood set"}
@@ -287,7 +287,7 @@ const Us = () => {
           <motion.button whileTap={{ scale: 0.95 }} onClick={() => setShowMoodDialog(true)}
             className="bg-card rounded-2xl border border-border p-4 text-left shadow-sm">
             <div className="h-10 w-10 rounded-xl bg-accent flex items-center justify-center mb-3">
-              <Smile className="h-5 w-5 text-foreground" />
+              <Smile className="h-5 w-5 text-accent-foreground" />
             </div>
             <p className="text-sm font-medium">My Mood</p>
             <p className="text-[11px] text-muted-foreground mt-0.5">{profile?.mood_emoji} {profile?.mood_text || "Set mood"}</p>
@@ -309,8 +309,8 @@ const Us = () => {
         <section>
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Countdowns</h2>
-            <button onClick={() => setShowCountdownDialog(true)} className="h-7 w-7 rounded-lg bg-accent flex items-center justify-center">
-              <Plus className="h-4 w-4" />
+            <button onClick={() => setShowCountdownDialog(true)} aria-label="Add countdown" className="h-9 w-9 rounded-lg bg-accent flex items-center justify-center">
+              <Plus className="h-4 w-4 text-accent-foreground" aria-hidden="true" />
             </button>
           </div>
 
@@ -366,9 +366,9 @@ const Us = () => {
                       <p className="text-[10px] text-muted-foreground">days</p>
                     </div>
                     {cd.creator_id === user?.id && (
-                      <button onClick={() => deleteCountdown(cd.id)}
-                        className="h-7 w-7 rounded-full flex items-center justify-center text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity hover:text-destructive">
-                        <X className="h-3.5 w-3.5" />
+                      <button onClick={() => deleteCountdown(cd.id)} aria-label="Delete countdown"
+                        className="h-9 w-9 rounded-full flex items-center justify-center text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity hover:text-destructive">
+                        <X className="h-4 w-4" aria-hidden="true" />
                       </button>
                     )}
                   </div>
@@ -394,8 +394,8 @@ const Us = () => {
                   onKeyDown={(e) => e.key === "Enter" && submitDailyAnswer()}
                   placeholder="Your answer..." className="h-10 rounded-xl text-sm" />
                 <Button onClick={submitDailyAnswer} disabled={submittingAnswer || !dailyAnswer.trim()}
-                  size="icon" className="h-10 w-10 rounded-xl bg-foreground shrink-0">
-                  <Send className="h-4 w-4 text-background" />
+                  size="icon" className="h-10 w-10 rounded-xl bg-primary shrink-0">
+                  <Send className="h-4 w-4 text-primary-foreground" />
                 </Button>
               </div>
             )}
@@ -432,7 +432,7 @@ const Us = () => {
               placeholder="How are you feeling?" className="rounded-xl" />
           </div>
           <DialogFooter>
-            <Button onClick={updateMood} className="rounded-xl bg-foreground text-background w-full">Save Mood</Button>
+            <Button onClick={updateMood} className="rounded-xl bg-primary text-primary-foreground w-full">Save Mood</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -458,7 +458,7 @@ const Us = () => {
           </div>
           <DialogFooter>
             <Button onClick={addCountdown} disabled={!newCountdown.title || !newCountdown.date}
-              className="rounded-xl bg-foreground text-background w-full">Add</Button>
+              className="rounded-xl bg-primary text-primary-foreground w-full">Add</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

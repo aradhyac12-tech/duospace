@@ -1,5 +1,5 @@
 import { useCallback, useRef } from "react";
-import { hapticMedium } from "@/lib/haptics";
+import { hapticLight } from "@/lib/haptics";
 
 export const useLongPress = (
   onLongPress: () => void,
@@ -13,7 +13,7 @@ export const useLongPress = (
       isLongPressRef.current = false;
       timerRef.current = setTimeout(() => {
         isLongPressRef.current = true;
-        hapticMedium();
+        hapticLight();
         onLongPress();
       }, delay);
     },

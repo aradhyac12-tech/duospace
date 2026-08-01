@@ -47,6 +47,27 @@ export type Database = {
         }
         Relationships: []
       }
+      blocked_users: {
+        Row: {
+          blocked_user_id: string
+          created_at: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          blocked_user_id: string
+          created_at?: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          blocked_user_id?: string
+          created_at?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       blend_invites: {
         Row: {
           created_at: string
@@ -554,6 +575,14 @@ export type Database = {
           created_at: string
           detected_at: string
           feedback: string | null
+          // Manually added 2026-07-31 alongside migration
+          // 20260731050000_add_mood_logs_features_column.sql — the column
+          // already existed in application code (MoodDetector.tsx) via an
+          // `as any` cast, but was never actually in the schema until that
+          // migration. Re-run `supabase gen types` against the live
+          // project once the migration is applied, to replace this
+          // hand-edit with a real codegen pass.
+          features: Json | null
           id: string
           mood: string
           user_id: string
@@ -565,6 +594,7 @@ export type Database = {
           created_at?: string
           detected_at?: string
           feedback?: string | null
+          features?: Json | null
           id?: string
           mood: string
           user_id: string
@@ -576,10 +606,116 @@ export type Database = {
           created_at?: string
           detected_at?: string
           feedback?: string | null
+          features?: Json | null
           id?: string
           mood?: string
           user_id?: string
           valence?: number | null
+        }
+        Relationships: []
+      }
+      notification_history: {
+        Row: {
+          body: string | null
+          conversation_id: string | null
+          created_at: string
+          data: Json
+          delivery_status: string
+          error_detail: string | null
+          fcm_message_ids: string[] | null
+          id: string
+          is_read: boolean
+          notification_type: string
+          read_at: string | null
+          recipient_id: string
+          related_id: string | null
+          sender_id: string | null
+          skip_reason: string | null
+          title: string | null
+          tokens_attempted: number
+          tokens_succeeded: number
+        }
+        Insert: {
+          body?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          data?: Json
+          delivery_status?: string
+          error_detail?: string | null
+          fcm_message_ids?: string[] | null
+          id?: string
+          is_read?: boolean
+          notification_type: string
+          read_at?: string | null
+          recipient_id: string
+          related_id?: string | null
+          sender_id?: string | null
+          skip_reason?: string | null
+          title?: string | null
+          tokens_attempted?: number
+          tokens_succeeded?: number
+        }
+        Update: {
+          body?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          data?: Json
+          delivery_status?: string
+          error_detail?: string | null
+          fcm_message_ids?: string[] | null
+          id?: string
+          is_read?: boolean
+          notification_type?: string
+          read_at?: string | null
+          recipient_id?: string
+          related_id?: string | null
+          sender_id?: string | null
+          skip_reason?: string | null
+          title?: string | null
+          tokens_attempted?: number
+          tokens_succeeded?: number
+        }
+        Relationships: []
+      }
+      notification_preferences: {
+        Row: {
+          calls_enabled: boolean
+          do_not_disturb: boolean
+          friend_requests_enabled: boolean
+          group_enabled: boolean
+          mentions_enabled: boolean
+          messages_enabled: boolean
+          muted_until: string | null
+          reactions_enabled: boolean
+          replies_enabled: boolean
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          calls_enabled?: boolean
+          do_not_disturb?: boolean
+          friend_requests_enabled?: boolean
+          group_enabled?: boolean
+          mentions_enabled?: boolean
+          messages_enabled?: boolean
+          muted_until?: string | null
+          reactions_enabled?: boolean
+          replies_enabled?: boolean
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          calls_enabled?: boolean
+          do_not_disturb?: boolean
+          friend_requests_enabled?: boolean
+          group_enabled?: boolean
+          mentions_enabled?: boolean
+          messages_enabled?: boolean
+          muted_until?: string | null
+          reactions_enabled?: boolean
+          replies_enabled?: boolean
+          updated_at?: string
+          user_id?: string
         }
         Relationships: []
       }
@@ -760,6 +896,48 @@ export type Database = {
           updated_at?: string
           user_id?: string
           username?: string | null
+        }
+        Relationships: []
+      }
+      push_tokens: {
+        Row: {
+          app_version: string | null
+          created_at: string
+          device_id: string | null
+          id: string
+          invalidated_reason: string | null
+          is_valid: boolean
+          last_used_at: string
+          platform: string
+          token: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          app_version?: string | null
+          created_at?: string
+          device_id?: string | null
+          id?: string
+          invalidated_reason?: string | null
+          is_valid?: boolean
+          last_used_at?: string
+          platform?: string
+          token: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          app_version?: string | null
+          created_at?: string
+          device_id?: string | null
+          id?: string
+          invalidated_reason?: string | null
+          is_valid?: boolean
+          last_used_at?: string
+          platform?: string
+          token?: string
+          updated_at?: string
+          user_id?: string
         }
         Relationships: []
       }

@@ -3,6 +3,9 @@ import { motion } from "framer-motion";
 import { X, RotateCcw, Send, Sparkles } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { acquireCamera, explainGumError, type CameraLease } from "@/lib/cameraBus";
+import { useMediaPermission } from "@/components/PermissionDeniedSheet";
+import { ensureMediaPermission, fromGumError } from "@/lib/mediaPermissions";
+import { hapticLight, hapticMedium, hapticSelection, hapticCameraShutter, hapticSend } from "@/lib/haptics";
 
 interface FilterDef {
   name: string;
@@ -89,6 +92,7 @@ const CameraWithFilters = ({ onClose, onCapture }: CameraWithFiltersProps) => {
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState("Basic");
   const { toast } = useToast();
+  const { report, permissionSheet } = useMediaPermission();
 
   const categories = [...new Set(FILTERS.map((f) => f.category))];
   const categoryFilters = FILTERS.filter((f) => f.category === selectedCategory);
@@ -102,6 +106,13 @@ const CameraWithFilters = ({ onClose, onCapture }: CameraWithFiltersProps) => {
 
   const startCamera = useCallback(async (facing: "user" | "environment") => {
     releaseLease();
+    // Ask first on native — otherwise getUserMedia is auto-denied by the OS.
+    const perm = await ensureMediaPermission("camera");
+    if (!perm.granted) {
+      setCameraError(perm.message);
+      report(perm, () => startCameraRef.current?.(facing));
+      return;
+    }
     try {
       const lease = await acquireCamera(facing);
       leaseRef.current = lease;
@@ -111,9 +122,15 @@ const CameraWithFilters = ({ onClose, onCapture }: CameraWithFiltersProps) => {
     } catch (err) {
       const { message } = explainGumError(err);
       setCameraError(message);
+      // Busy / blocked device gets the shared recovery sheet, not just a toast.
+      report(fromGumError("camera", err), () => startCameraRef.current?.(facing));
       toast({ title: "Camera unavailable", description: message, variant: "destructive" });
     }
-  }, [releaseLease, toast]);
+  }, [releaseLease, toast, report]);
+
+  // Stable handle so the retry callback above doesn't capture a stale closure.
+  const startCameraRef = useRef<typeof startCamera | null>(null);
+  startCameraRef.current = startCamera;
 
   useEffect(() => {
     startCamera(facingMode);
@@ -159,8 +176,12 @@ const CameraWithFilters = ({ onClose, onCapture }: CameraWithFiltersProps) => {
         <div className="text-center space-y-4 px-8">
           <Sparkles className="h-12 w-12 text-white/40 mx-auto" />
           <p className="text-white text-sm">{cameraError}</p>
-          <button onClick={onClose} className="bg-white/20 text-white px-6 py-2.5 rounded-xl text-sm">Close</button>
+          <div className="flex items-center justify-center gap-2">
+            <button onClick={() => { hapticLight(); startCamera(facingMode); }} className="bg-white/20 text-white px-6 py-2.5 rounded-xl text-sm">Retry</button>
+            <button onClick={() => { hapticLight(); onClose(); }} className="bg-white/10 text-white px-6 py-2.5 rounded-xl text-sm">Close</button>
+          </div>
         </div>
+        {permissionSheet}
       </div>
     );
   }
@@ -169,14 +190,14 @@ const CameraWithFilters = ({ onClose, onCapture }: CameraWithFiltersProps) => {
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 z-50 bg-black flex flex-col">
       {/* Top bar */}
       <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between p-4 safe-top">
-        <button onClick={onClose} className="h-10 w-10 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center">
-          <X className="h-5 w-5 text-white" />
+        <button onClick={() => { hapticLight(); onClose(); }} aria-label="Close camera" className="h-10 w-10 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center">
+          <X className="h-5 w-5 text-white" aria-hidden="true" />
         </button>
         <div className="bg-black/40 backdrop-blur-sm rounded-full px-3 py-1.5">
           <span className="text-xs text-white font-medium">{FILTERS[selectedFilter].name}</span>
         </div>
-        <button onClick={flipCamera} className="h-10 w-10 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center">
-          <RotateCcw className="h-5 w-5 text-white" />
+        <button onClick={() => { hapticMedium(); flipCamera(); }} aria-label="Flip camera" className="h-10 w-10 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center">
+          <RotateCcw className="h-5 w-5 text-white" aria-hidden="true" />
         </button>
       </div>
 
@@ -201,7 +222,7 @@ const CameraWithFilters = ({ onClose, onCapture }: CameraWithFiltersProps) => {
             {/* Category tabs */}
             <div className="flex overflow-x-auto gap-1 px-3 pt-2 no-scrollbar">
               {categories.map((cat) => (
-                <button key={cat} onClick={() => setSelectedCategory(cat)}
+                <button key={cat} onClick={() => { hapticSelection(); setSelectedCategory(cat); }}
                   className={`px-3 py-1.5 rounded-full text-[10px] font-medium whitespace-nowrap transition-colors ${
                     selectedCategory === cat ? "bg-white text-black" : "bg-white/10 text-white/70"
                   }`}>
@@ -215,7 +236,7 @@ const CameraWithFilters = ({ onClose, onCapture }: CameraWithFiltersProps) => {
               {categoryFilters.map((f) => {
                 const globalIdx = FILTERS.indexOf(f);
                 return (
-                  <button key={f.name} onClick={() => setSelectedFilter(globalIdx)}
+                  <button key={f.name} onClick={() => { hapticSelection(); setSelectedFilter(globalIdx); }}
                     className={`flex flex-col items-center gap-0.5 shrink-0 transition-opacity ${selectedFilter === globalIdx ? "opacity-100" : "opacity-50"}`}>
                     <div className={`h-11 w-11 rounded-full bg-white/10 flex items-center justify-center text-base ${selectedFilter === globalIdx ? "ring-2 ring-white" : ""}`}>
                       {f.emoji}
@@ -228,7 +249,8 @@ const CameraWithFilters = ({ onClose, onCapture }: CameraWithFiltersProps) => {
 
             {/* Capture button */}
             <div className="flex items-center justify-center py-3">
-              <button onClick={capture}
+              <button onClick={() => { hapticCameraShutter(); capture(); }}
+                aria-label="Take photo"
                 className="h-18 w-18 rounded-full border-4 border-white flex items-center justify-center active:scale-95 transition-transform"
                 style={{ width: 72, height: 72 }}>
                 <div className="rounded-full bg-white" style={{ width: 60, height: 60 }} />
@@ -237,13 +259,13 @@ const CameraWithFilters = ({ onClose, onCapture }: CameraWithFiltersProps) => {
           </>
         ) : (
           <div className="flex items-center justify-center gap-6 py-6">
-            <button onClick={retake} className="flex flex-col items-center gap-1.5">
+            <button onClick={() => { hapticLight(); retake(); }} className="flex flex-col items-center gap-1.5">
               <div className="h-14 w-14 rounded-full bg-white/10 flex items-center justify-center">
                 <RotateCcw className="h-6 w-6 text-white" />
               </div>
               <span className="text-[10px] text-white">Retake</span>
             </button>
-            <button onClick={sendPhoto} className="flex flex-col items-center gap-1.5">
+            <button onClick={() => { hapticSend(); sendPhoto(); }} className="flex flex-col items-center gap-1.5">
               <div className="h-14 w-14 rounded-full bg-primary flex items-center justify-center">
                 <Send className="h-6 w-6 text-white" />
               </div>

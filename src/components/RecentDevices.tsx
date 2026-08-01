@@ -90,7 +90,7 @@ const RecentDevices = () => {
                 <button
                   onClick={() => remove(d.id)}
                   disabled={removing === d.id}
-                  className="h-8 w-8 rounded-full flex items-center justify-center text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition"
+                  className="h-10 w-10 rounded-full flex items-center justify-center text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition"
                   aria-label="Remove device"
                 >
                   {removing === d.id

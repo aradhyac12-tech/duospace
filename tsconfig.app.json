@@ -22,6 +22,12 @@
     "paths": {
       "@/*": [
         "./src/*"
+      ],
+      "duospace-audio-route": [
+        "./native-plugins/audio-route/src/index.ts"
+      ],
+      "duospace-device-status": [
+        "./native-plugins/device-status/src/index.ts"
       ]
     },
     "skipLibCheck": true,
@@ -33,6 +39,8 @@
     "useDefineForClassFields": true
   },
   "include": [
-    "src"
+    "src",
+    "native-plugins/audio-route/src",
+    "native-plugins/device-status/src"
   ]
 }

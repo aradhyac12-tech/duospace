@@ -5,6 +5,7 @@
 // CALL-07: Network reconnect — ICE/network-connection event auto-rejoin
 import { useCallback, useEffect, useRef, useState } from "react";
 import DailyIframe, { DailyCall, DailyParticipant as SDKDailyParticipant, DailyEventObjectTrack, DailyEventObjectNetworkQualityEvent } from "@daily-co/daily-js";
+import { extractErrorMessage } from "@/lib/errorMessage";
 
 // Use SDK types directly to avoid drift.
 type DailyParticipant = SDKDailyParticipant;
@@ -215,7 +216,7 @@ export const useDailyCall = (): UseDailyCallReturn => {
       setParticipantCount(Object.keys(call.participants()).length);
     } catch (err: unknown) {
       /* AUDIT FIX #16: join error captured via setError — removed console.error */
-      setError((err instanceof Error ? err.message : String(err)) || "Failed to join call");
+      setError(extractErrorMessage(err, "Failed to join call"));
       setCallState("error");
     }
   }, [attachTrack, attachAudioTrack, cleanupAudioElements]);

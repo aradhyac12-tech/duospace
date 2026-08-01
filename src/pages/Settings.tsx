@@ -1,43 +1,118 @@
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { useTheme, ThemeColor, THEMES } from "@/contexts/ThemeContext";
 import { WALLPAPERS, resolveWallpaperStyle } from "@/lib/wallpapers";
 import {
   ChevronLeft, Check, ImageIcon, X, Bell, Fingerprint, Vibrate, Link2, Unlink,
-  EyeOff, Copy, Share2, Eye, ChevronRight, Palette, Download, RotateCcw,
+  EyeOff, Copy, Share2, Eye, ChevronRight, ChevronDown, Palette, Download, RotateCcw,
   MessageSquare, Upload, Scan, KeyRound, Smartphone, Image,
-  Pencil, Search, UserPlus, Smile, QrCode,
+  Pencil, Search, UserPlus, Smile, QrCode, Sun, Moon, MonitorSmartphone, Clock, Sparkles,
+  ChevronsDownUp, ChevronsUpDown, Wand2,
 } from "lucide-react";
 import CodeSurpriseEditor from "@/components/CodeSurpriseEditor";
 import { useLocation, useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { Slider } from "@/components/ui/slider";
-import { hapticLight, hapticMedium } from "@/lib/haptics";
+import { hapticLight, hapticMedium, hapticSelection, getHapticIntensity, setHapticIntensity, type HapticIntensity } from "@/lib/haptics";
 import storage from "@/lib/storage";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
   DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
-import { hashPin } from "@/lib/crypto";
+import { hashPin, verifyPin } from "@/lib/crypto";
 import BackupManager from "@/components/BackupManager";
 import DailyKeyManager from "@/components/DailyKeyManager";
 import RecentDevices from "@/components/RecentDevices";
 import ThemeStudio from "@/components/ThemeStudio";
+import IconStudio from "@/components/IconStudio";
 import PeekConfigDialog from "@/components/PeekConfigDialog";
+import MoodHistory from "@/components/MoodHistory";
 import QRSignInDisplay from "@/components/auth/QRSignInDisplay";
 import QRSignInScanner from "@/components/auth/QRSignInScanner";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import PasskeyRegister from "@/components/auth/PasskeyRegister";
 import AddEmailPasswordDialog from "@/components/auth/AddEmailPasswordDialog";
 
 
+// Every collapsible top-level section on this page, in display order.
+// Keep this in sync with the <SectionShell id="..."> ids below — it drives
+// persisted collapse state and the "expand all / collapse all" button.
+const SETTINGS_SECTION_IDS = [
+  "account", "partner", "devices", "security", "appearance",
+  "anniversary", "data", "whatsapp",
+] as const;
+
+/**
+ * A titled, collapsible section. Renders nothing when the current search
+ * query doesn't match `keywords` (same behavior the page had before this
+ * was factored out). While searching, sections are always shown expanded
+ * — collapse state only applies when the user isn't actively filtering.
+ */
+const SectionShell = ({
+  id, title, keywords, matches, isOpen, isSearching, onToggle, children,
+}: {
+  id: string;
+  title: string;
+  keywords: string;
+  matches: (keywords: string) => boolean;
+  isOpen: boolean;
+  isSearching: boolean;
+  onToggle: (id: string) => void;
+  children: ReactNode;
+}) => {
+  if (!matches(keywords)) return null;
+  const open = isSearching || isOpen;
+  return (
+    <section>
+      <button
+        type="button"
+        onClick={() => onToggle(id)}
+        aria-expanded={open}
+        disabled={isSearching}
+        className={cn(
+          "w-full flex items-center justify-between gap-2 mb-2.5 sticky top-[112px] z-10 backdrop-blur-sm transition-transform active:scale-[0.99] disabled:active:scale-100",
+          open
+            ? "bg-background/85 py-1 -mx-1 px-1 rounded"
+            : "bg-card border border-border/50 rounded-xl px-3.5 py-3"
+        )}
+      >
+        <p className={cn(
+          "font-medium text-muted-foreground uppercase tracking-wider",
+          open ? "text-[11px]" : "text-[12px] text-foreground normal-case tracking-normal font-semibold"
+        )}>{title}</p>
+        {!isSearching && (
+          <ChevronDown className={cn("h-3.5 w-3.5 text-muted-foreground shrink-0 transition-transform duration-200", open ? "rotate-180" : "")} />
+        )}
+      </button>
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2, ease: "easeInOut" }}
+            className="overflow-hidden"
+          >
+            {children}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </section>
+  );
+};
+
 const Settings = () => {
-  const { theme, setTheme, colorMode, toggleColorMode, chatWallpaper, setChatWallpaper, appIcon, setAppIcon, appName, setAppName, appSettings, updateSetting } = useTheme();
+  const {
+    theme, setTheme, colorMode,
+    themeMode, setThemeMode, scheduleDarkStart, scheduleDarkEnd, setScheduleTimes,
+    chatWallpaper, setChatWallpaper, appIcon, setAppIcon, appName, setAppName, appSettings, updateSetting,
+  } = useTheme();
   const wallpapersByCategory = useMemo(() => {
     const groups = new Map<string, typeof WALLPAPERS>();
     for (const w of WALLPAPERS) {
@@ -54,14 +129,18 @@ const Settings = () => {
   const [showWallpaperPicker, setShowWallpaperPicker] = useState(false);
   const [showPinDialog, setShowPinDialog]         = useState(false);
   const [pinInput, setPinInput]                   = useState("");
-  const [pinStep, setPinStep]                     = useState<"enter"|"confirm">("enter");
+  const [pinStep, setPinStep]                     = useState<"verify"|"enter"|"confirm">("enter");
   const [pinFirst, setPinFirst]                   = useState("");
+  const [pinVerifyError, setPinVerifyError]       = useState(false);
+  const [pinVerifyAttempts, setPinVerifyAttempts] = useState(0);
   const [appNameInput, setAppNameInput]           = useState(appName);
   const appIconInputRef = useRef<HTMLInputElement>(null);
   const [showPartnerDialog, setShowPartnerDialog] = useState(false);
   const [showInviteDialog, setShowInviteDialog]   = useState(false);
   const [showPeekConfig, setShowPeekConfig]       = useState(false);
+  const [showMoodHistory, setShowMoodHistory]     = useState(false);
   const [showDeviceQr, setShowDeviceQr]           = useState(false);
+  const [devicesQrPanel, setDevicesQrPanel]        = useState<"scan" | "show">("show");
   const [showInviteQr, setShowInviteQr]           = useState(false);
   const [showPartnerScanner, setShowPartnerScanner] = useState(false);
 
@@ -95,12 +174,45 @@ const Settings = () => {
   } | null>(null);
   const [searchQuery, setSearchQuery]             = useState("");
   const [showThemeStudio, setShowThemeStudio]     = useState(false);
+  const [showIconStudio, setShowIconStudio]       = useState(false);
 
   // Filter sections by search query (matches against section data-keywords).
   const matches = (keywords: string) => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return true;
     return keywords.toLowerCase().includes(q);
+  };
+
+  // Collapsible sections: which section ids are collapsed, persisted so the
+  // layout the user leaves the page with is the one they come back to.
+  // Default: everything collapsed except Account — a page that opens with
+  // 8 sections already expanded reads as one long unbroken scroll; opening
+  // to just the section headers (each one tap away) is what actually makes
+  // "grouped sections" feel grouped instead of just labeled.
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>(() =>
+    storage.getJSON<Record<string, boolean>>("duo-settings-collapsed", {
+      partner: true, devices: true, security: true, appearance: true,
+      anniversary: true, data: true, whatsapp: true,
+    })
+  );
+  const isSearching = searchQuery.trim().length > 0;
+  const toggleSection = (id: string) => {
+    hapticLight();
+    setCollapsedSections(prev => {
+      const next = { ...prev, [id]: !prev[id] };
+      storage.setJSON("duo-settings-collapsed", next);
+      return next;
+    });
+  };
+  const allExpanded = SETTINGS_SECTION_IDS.every(id => !collapsedSections[id]);
+  const toggleAllSections = () => {
+    hapticLight();
+    const next = SETTINGS_SECTION_IDS.reduce((acc, id) => {
+      acc[id] = allExpanded; // if currently all expanded, collapse every one
+      return acc;
+    }, {} as Record<string, boolean>);
+    setCollapsedSections(next);
+    storage.setJSON("duo-settings-collapsed", next);
   };
 
   useEffect(() => {
@@ -313,13 +425,33 @@ const Settings = () => {
     setEditingPetName(false); toast({ title:"Saved" });
   };
 
-  // FIX: PIN setup uses PBKDF2 hashing
+  // FIX: PIN change now requires re-entering the *current* PIN first.
+  // Previously "Change PIN" jumped straight to "Enter new PIN" with zero
+  // proof of who was holding the phone — anyone with a few seconds of
+  // unsupervised access to an unlocked app could silently swap the PIN out
+  // from under the real owner. First-time setup (no PIN yet) is unaffected.
   const handlePinDigit = async (d: string) => {
+    if (pinStep === "verify" && pinVerifyAttempts >= 5) return;
     if (d==="⌫") { setPinInput(p=>p.slice(0,-1)); return; }
     const next = pinInput + d;
     if (next.length>6) return;
     setPinInput(next);
     if (next.length===6) {
+      if (pinStep==="verify") {
+        const stored = storage.get("duo-lock-pin");
+        const ok = stored ? await verifyPin(next, stored) : true;
+        if (ok) {
+          setPinVerifyError(false); setPinVerifyAttempts(0);
+          setPinInput(""); setPinStep("enter");
+        } else {
+          const attempts = pinVerifyAttempts + 1;
+          setPinVerifyAttempts(attempts);
+          setPinVerifyError(true);
+          setTimeout(() => { setPinInput(""); setPinVerifyError(false); }, 500);
+          if (attempts >= 5) toast({ title: "Too many attempts", description: "Close and try again later.", variant: "destructive" });
+        }
+        return;
+      }
       if (pinStep==="enter") {
         setPinFirst(next); setPinInput(""); setPinStep("confirm");
       } else {
@@ -376,6 +508,13 @@ const Settings = () => {
     setImportingWhatsApp(false); setImportProgress("");
   };
 
+  const [hapticIntensity, setHapticIntensityState] = useState<HapticIntensity>(() => getHapticIntensity());
+  const chooseHapticIntensity = (level: HapticIntensity) => {
+    setHapticIntensity(level);
+    setHapticIntensityState(level);
+    hapticSelection(); // preview the newly chosen intensity immediately
+  };
+
   const settingsItems = [
     { key:"biometricLock" as const, icon:Fingerprint, label:"App Lock",      desc:"Face ID / Fingerprint + PIN fallback" },
     { key:"notifications" as const, icon:Bell,        label:"Notifications",  desc:"Message & call alerts" },
@@ -395,35 +534,47 @@ const Settings = () => {
     >
       <header className="safe-top px-5 pt-4 pb-3 sticky top-0 z-20 bg-background/85 backdrop-blur-xl border-b border-border/40">
         <div className="flex items-center gap-3 mb-3">
-          <button onClick={() => { hapticLight(); navigate(-1); }} className="h-8 w-8 rounded-full bg-accent/60 flex items-center justify-center active:scale-95 transition-transform" aria-label="Back">
-            <ChevronLeft className="h-4 w-4 text-foreground" />
+          <button onClick={() => { hapticLight(); navigate(-1); }} className="h-10 w-10 rounded-full bg-accent/15 flex items-center justify-center active:scale-95 transition-transform" aria-label="Back">
+            <ChevronLeft className="h-5 w-5 text-accent" />
           </button>
           <h1 className="text-lg font-semibold tracking-tight flex-1">Settings</h1>
         </div>
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-          <Input
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            placeholder="Search settings"
-            className="h-9 pl-8 rounded-full bg-muted/60 border-transparent text-sm"
-            aria-label="Search settings"
-          />
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <Input
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              placeholder="Search settings"
+              className="h-9 pl-8 rounded-full bg-muted/60 border-transparent text-sm"
+              aria-label="Search settings"
+            />
+          </div>
+          {!isSearching && (
+            <button
+              onClick={toggleAllSections}
+              aria-label={allExpanded ? "Collapse all sections" : "Expand all sections"}
+              title={allExpanded ? "Collapse all" : "Expand all"}
+              className="h-9 w-9 shrink-0 rounded-full bg-muted/60 flex items-center justify-center active:scale-95 transition-transform"
+            >
+              {allExpanded ? <ChevronsDownUp className="h-4 w-4 text-muted-foreground" /> : <ChevronsUpDown className="h-4 w-4 text-muted-foreground" />}
+            </button>
+          )}
         </div>
       </header>
 
       <div className="px-5 space-y-6 pt-5">
 
         {/* Account */}
-        <section hidden={!matches("account sign out logout email username profile handle")}>
-          <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-2.5 sticky top-[112px] z-10 bg-background/85 backdrop-blur-sm py-1 -mx-1 px-1 rounded">Account</p>
+        <SectionShell id="account" title="Account" keywords="account sign out logout email username profile handle"
+          matches={matches} isOpen={!collapsedSections.account} isSearching={isSearching} onToggle={toggleSection}>
           <p className="text-xs text-muted-foreground mb-2">{user?.email}</p>
           <div className="bg-card rounded-2xl border border-border/60 p-4 space-y-2 mb-2">
             <p className="text-[11px] font-medium text-muted-foreground">Username</p>
             <div className="flex gap-2">
               <Input value={myUsername} onChange={e=>setMyUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_.]/g,""))}
                 placeholder="username" className="h-9 rounded-xl flex-1 text-sm" />
-              <Button onClick={saveUsername} size="sm" className="rounded-xl bg-foreground text-background h-9 px-4 text-xs">Save</Button>
+              <Button onClick={saveUsername} size="sm" className="rounded-xl bg-primary text-primary-foreground h-9 px-4 text-xs">Save</Button>
             </div>
             <p className="text-[10px] text-muted-foreground">Letters, numbers, . and _ only. Min 3 characters.</p>
           </div>
@@ -431,11 +582,11 @@ const Settings = () => {
             className="w-full bg-card rounded-xl border border-border/60 p-3 text-sm text-destructive text-center active:scale-[0.98] transition-transform">
             Sign Out
           </button>
-        </section>
+        </SectionShell>
 
         {/* Partner */}
-        <section hidden={!matches("partner invite link username code request connect unlink")}>
-          <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-2.5 sticky top-[112px] z-10 bg-background/85 backdrop-blur-sm py-1 -mx-1 px-1 rounded">Partner</p>
+        <SectionShell id="partner" title="Partner" keywords="partner invite link username code request connect unlink"
+          matches={matches} isOpen={!collapsedSections.partner} isSearching={isSearching} onToggle={toggleSection}>
 
           {/* Pending partner requests */}
           {pendingRequests.length > 0 && (
@@ -444,7 +595,7 @@ const Settings = () => {
                 <div key={req.id} className="bg-card rounded-2xl border border-primary/20 p-4 flex items-center gap-3">
                   <div className="h-9 w-9 rounded-full bg-primary/20 flex items-center justify-center text-sm font-semibold text-primary">💌</div>
                   <div className="flex-1"><p className="text-sm font-medium">Partner request</p><p className="text-[11px] text-muted-foreground">from {req.sender?.display_name || (req.sender?.username && `@${req.sender.username}`) || `${req.sender_id?.slice(0,8)}…`}</p></div>
-                  <button onClick={() => acceptRequest(req)} className="h-7 px-3 rounded-full bg-foreground text-background text-[11px]">Accept</button>
+                  <button onClick={() => acceptRequest(req)} className="h-7 px-3 rounded-full bg-primary text-primary-foreground text-[11px]">Accept</button>
                   <button onClick={() => declineRequest(req.id)} className="h-7 px-3 rounded-full bg-muted text-muted-foreground text-[11px]">Decline</button>
                 </div>
               ))}
@@ -470,7 +621,7 @@ const Settings = () => {
                 {editingPetName ? (
                   <div className="flex gap-2">
                     <Input value={petName} onChange={e=>setPetName(e.target.value)} placeholder="Baby, Love, Jaan..." className="h-8 rounded-full text-sm flex-1" autoFocus />
-                    <Button onClick={savePetName} size="sm" className="rounded-full bg-foreground text-background h-8 px-4 text-xs">Save</Button>
+                    <Button onClick={savePetName} size="sm" className="rounded-full bg-primary text-primary-foreground h-8 px-4 text-xs">Save</Button>
                   </div>
                 ) : (
                   <button onClick={() => setEditingPetName(true)} className="flex items-center gap-2 text-sm text-foreground">
@@ -498,19 +649,19 @@ const Settings = () => {
             </div>
           )}
 
-        </section>
+        </SectionShell>
 
         {/* Devices — QR sign-in on another device + QR-based signup invite */}
         {user && (
-          <section hidden={!matches("device qr scan sign in on another new account invite signup pair pairing recent history session where signed")}>
-            <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-2.5 sticky top-[112px] z-10 bg-background/85 backdrop-blur-sm py-1 -mx-1 px-1 rounded">Devices & Sign-in</p>
+          <SectionShell id="devices" title="Devices & Sign-in" keywords="device qr scan sign in on another new account invite signup pair pairing recent history session where signed"
+            matches={matches} isOpen={!collapsedSections.devices} isSearching={isSearching} onToggle={toggleSection}>
             <div className="space-y-2">
-              <button onClick={() => { hapticLight(); setShowDeviceQr(true); }}
+              <button onClick={() => { hapticLight(); setDevicesQrPanel("show"); setShowDeviceQr(true); }}
                 className="w-full bg-card rounded-2xl border border-border/60 p-4 flex items-center gap-3 active:scale-[0.98] transition-transform">
                 <QrCode className="h-4 w-4 text-muted-foreground shrink-0" />
                 <div className="flex-1 text-left">
-                  <p className="text-sm font-medium">Sign in on another device</p>
-                  <p className="text-[11px] text-muted-foreground">Show a QR — scan from the Auth screen on your other device</p>
+                  <p className="text-sm font-medium">QR code</p>
+                  <p className="text-[11px] text-muted-foreground">Show yours to sign in elsewhere, or scan one to sign in, link, or invite</p>
                 </div>
                 <ChevronRight className="h-4 w-4 text-muted-foreground" />
               </button>
@@ -546,12 +697,12 @@ const Settings = () => {
             </div>
             <p className="text-[11px] font-medium text-muted-foreground mt-4 mb-2">Recent devices</p>
             <RecentDevices />
-          </section>
+          </SectionShell>
         )}
 
         {/* Security & Privacy */}
-        <section hidden={!matches("security privacy lock pin biometric fingerprint face haptic notification mood")}>
-          <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-2.5 sticky top-[112px] z-10 bg-background/85 backdrop-blur-sm py-1 -mx-1 px-1 rounded">Security & Privacy</p>
+        <SectionShell id="security" title="Security & Privacy" keywords="security privacy lock pin biometric fingerprint face haptic notification mood"
+          matches={matches} isOpen={!collapsedSections.security} isSearching={isSearching} onToggle={toggleSection}>
           <div className="bg-card rounded-2xl border border-border/60 divide-y divide-border/40">
             {settingsItems.map(item => (
               <div key={item.key} className="flex items-center gap-3 px-4 py-3">
@@ -562,16 +713,50 @@ const Settings = () => {
                 </div>
                 <Switch checked={appSettings[item.key]||false} onCheckedChange={v => {
                   hapticLight(); updateSetting(item.key,v);
-                  if (item.key==="biometricLock" && v && !storage.get("duo-lock-pin")) setShowPinDialog(true);
+                  if (item.key==="biometricLock" && v && !storage.get("duo-lock-pin")) {
+                    setPinInput(""); setPinStep("enter"); setPinFirst("");
+                    setPinVerifyError(false); setPinVerifyAttempts(0);
+                    setShowPinDialog(true);
+                  }
                   // Fix #Bug11: sync to the localStorage key MoodDetector checks on startup
                   if (item.key==="moodDetection") storage.set("mood-detection-enabled", v ? "true" : "false");
                 }} />
               </div>
             ))}
+            {appSettings.hapticFeedback && (
+              <div className="flex items-center gap-3 px-4 py-3">
+                <div className="h-4 w-4 shrink-0" aria-hidden="true" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium">Haptic intensity</p>
+                  <p className="text-[11px] text-muted-foreground">How strong feedback feels</p>
+                </div>
+                <div className="flex items-center gap-1 rounded-full bg-muted p-1" role="radiogroup" aria-label="Haptic intensity">
+                  {(["subtle", "standard", "strong"] as HapticIntensity[]).map(level => (
+                    <button
+                      key={level}
+                      role="radio"
+                      aria-checked={hapticIntensity === level}
+                      onClick={() => chooseHapticIntensity(level)}
+                      className={`px-2.5 py-1 rounded-full text-[11px] capitalize transition-colors ${
+                        hapticIntensity === level ? "bg-accent text-accent-foreground" : "text-muted-foreground"
+                      }`}
+                    >
+                      {level}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="flex items-center gap-3 px-4 py-3">
               <KeyRound className="h-4 w-4 text-muted-foreground shrink-0" />
               <div className="flex-1 min-w-0"><p className="text-sm font-medium">Change PIN</p><p className="text-[11px] text-muted-foreground">Update your 6-digit lock PIN</p></div>
-              <button onClick={() => { setPinInput(""); setPinStep("enter"); setPinFirst(""); setShowPinDialog(true); }}
+              <button onClick={() => {
+                setPinInput("");
+                setPinStep(storage.get("duo-lock-pin") ? "verify" : "enter");
+                setPinFirst("");
+                setPinVerifyError(false); setPinVerifyAttempts(0);
+                setShowPinDialog(true);
+              }}
                 className="h-7 px-3 rounded-full bg-muted text-[11px] text-foreground">Change</button>
             </div>
             {appSettings.peekGuard && (
@@ -582,12 +767,20 @@ const Settings = () => {
                   className="h-7 px-3 rounded-full bg-muted text-[11px] text-foreground">Configure</button>
               </div>
             )}
+            {appSettings.moodDetection && (
+              <div className="flex items-center gap-3 px-4 py-3">
+                <Smile className="h-4 w-4 text-muted-foreground shrink-0" />
+                <div className="flex-1 min-w-0"><p className="text-sm font-medium">Mood history</p><p className="text-[11px] text-muted-foreground">Trends from your daily check-ins</p></div>
+                <button onClick={() => { hapticLight(); setShowMoodHistory(true); }}
+                  className="h-7 px-3 rounded-full bg-muted text-[11px] text-foreground">View</button>
+              </div>
+            )}
           </div>
-        </section>
+        </SectionShell>
 
         {/* Appearance */}
-        <section hidden={!matches("appearance theme color wallpaper icon name dark light")}>
-          <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-2.5 sticky top-[112px] z-10 bg-background/85 backdrop-blur-sm py-1 -mx-1 px-1 rounded">Appearance</p>
+        <SectionShell id="appearance" title="Appearance" keywords="appearance theme color wallpaper icon name dark light auto schedule time adaptive dynamic sky"
+          matches={matches} isOpen={!collapsedSections.appearance} isSearching={isSearching} onToggle={toggleSection}>
           <div className="space-y-2">
             {/* App name */}
             <div className="bg-card rounded-2xl border border-border/60 p-4 space-y-2">
@@ -613,7 +806,7 @@ const Settings = () => {
                     toast({ title: "Name updated", description: "Changes the in-app display name only." });
                   }}
                   size="sm"
-                  className="rounded-xl bg-foreground text-background h-9 px-4 text-xs"
+                  className="rounded-xl bg-primary text-primary-foreground h-9 px-4 text-xs"
                 >Save</Button>
               </div>
               <p className="text-[10px] text-muted-foreground">Letters, numbers, . and _ only · 3–32 chars · In-app display only</p>
@@ -626,8 +819,10 @@ const Settings = () => {
               <div className="flex-1">
                 <p className="text-sm font-medium">App Icon</p>
                 {/* ICON-01 + NAME-01 FIX: Be honest about scope. Native home screen icon
-                    cannot be changed at runtime — it is baked into the app binary. This
-                    only affects the in-app display (lock screen, chat header, browser tab). */}
+                    cannot be changed at runtime — it is baked into the app binary. Quick
+                    upload here only affects the in-app display (lock screen, chat header,
+                    browser tab). Icon Studio below additionally lets you design a proper
+                    icon and export the real Android/iOS native asset set for the build. */}
                 <p className="text-[11px] text-muted-foreground">Changes in-app display & browser tab · Home screen icon unchanged</p>
               </div>
               <div className="flex items-center gap-2">
@@ -641,23 +836,84 @@ const Settings = () => {
               reader.onload = () => setAppIcon(reader.result as string);
               reader.readAsDataURL(file); e.target.value="";
             }} />
+            <button
+              onClick={() => { hapticLight(); setShowIconStudio(true); }}
+              className="w-full h-9 rounded-xl bg-gradient-to-r from-primary/15 to-accent/30 border border-border/60 text-xs font-medium flex items-center justify-center gap-1.5 active:scale-[0.98] transition-transform"
+            >
+              <Wand2 className="h-3.5 w-3.5" /> Open Icon Studio — presets, custom, export Android/iOS
+            </button>
             {/* Theme */}
             <div className="bg-card rounded-2xl border border-border/60 p-4">
               <div className="flex items-center justify-between mb-3">
-                <p className="text-[11px] text-muted-foreground uppercase tracking-wider">Theme</p>
-                <button
-                  onClick={() => { hapticLight(); toggleColorMode(); }}
-                  className="h-7 px-3 rounded-full bg-muted text-[11px] font-medium flex items-center gap-1.5"
-                >
-                  {colorMode === "dark" ? "🌙 Dark" : "☀️ Light"}
-                </button>
+                <p className="text-[11px] text-muted-foreground uppercase tracking-wider">Appearance mode</p>
+                <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+                  {colorMode === "dark" ? <Moon className="h-3 w-3" /> : <Sun className="h-3 w-3" />}
+                  {colorMode === "dark" ? "Dark now" : "Light now"}
+                </span>
               </div>
+              <div className="grid grid-cols-5 gap-1.5 mb-3">
+                {([
+                  { id: "light" as const, label: "Light", icon: Sun },
+                  { id: "dark" as const, label: "Dark", icon: Moon },
+                  { id: "auto" as const, label: "Auto", icon: MonitorSmartphone },
+                  { id: "schedule" as const, label: "Timed", icon: Clock },
+                  { id: "dynamic" as const, label: "Dynamic", icon: Sparkles },
+                ]).map(opt => (
+                  <button
+                    key={opt.id}
+                    onClick={() => { hapticLight(); setThemeMode(opt.id); }}
+                    aria-pressed={themeMode === opt.id}
+                    className={cn(
+                      "h-14 rounded-xl border flex flex-col items-center justify-center gap-1 text-[9.5px] font-medium transition-all",
+                      themeMode === opt.id
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-border/60 bg-muted/30 text-muted-foreground"
+                    )}
+                  >
+                    <opt.icon className="h-3.5 w-3.5" />
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              {themeMode === "auto" && (
+                <p className="text-[10px] text-muted-foreground mb-3">Follows your device's system light/dark setting automatically.</p>
+              )}
+              {themeMode === "schedule" && (
+                <div className="mb-3 space-y-2">
+                  <p className="text-[10px] text-muted-foreground">Switches to dark mode in the evening and back to light in the morning.</p>
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1">
+                      <label className="text-[10px] text-muted-foreground mb-1 block">Dark from</label>
+                      <input
+                        type="time"
+                        value={scheduleDarkStart}
+                        onChange={e => { hapticLight(); setScheduleTimes(e.target.value, scheduleDarkEnd); }}
+                        className="w-full h-9 rounded-xl border border-border/60 bg-muted/30 px-3 text-sm"
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <label className="text-[10px] text-muted-foreground mb-1 block">Light from</label>
+                      <input
+                        type="time"
+                        value={scheduleDarkEnd}
+                        onChange={e => { hapticLight(); setScheduleTimes(scheduleDarkStart, e.target.value); }}
+                        className="w-full h-9 rounded-xl border border-border/60 bg-muted/30 px-3 text-sm"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+              {themeMode === "dynamic" && (
+                <p className="text-[10px] text-muted-foreground mb-3">
+                  Theme colors — and the Dynamic Sky wallpaper below — continuously shift through the day like Apple's dynamic wallpapers, with no hard switch at any point.
+                </p>
+              )}
               <div className="grid grid-cols-4 gap-2">
                 {THEMES.map((t) => (
                   <button key={t.id} onClick={() => { setTheme(t.id); hapticLight(); }}
                     aria-label={`${t.name} theme${theme===t.id ? " (selected)" : ""}`}
                     aria-pressed={theme===t.id}
-                    className={cn("h-12 rounded-xl border-2 transition-all", theme===t.id?"border-foreground":"border-transparent")}
+                    className={cn("h-12 rounded-xl border-2 transition-all", theme===t.id?"border-primary":"border-transparent")}
                     style={{ background:t.preview }}>
                     {theme===t.id && <Check className="h-4 w-4 text-foreground mx-auto" aria-hidden="true" />}
                   </button>
@@ -682,16 +938,24 @@ const Settings = () => {
                     <p className="text-[10px] text-muted-foreground mb-1.5">{category}</p>
                     <div data-swipe-nav-ignore className="flex gap-2 overflow-x-auto pb-1">
                       {list.map(w => {
-                        const preview = colorMode === "dark" ? w.dark : w.light;
+                        // Dynamic Sky's swatch is computed live from the current
+                        // time (see dynamicSky.ts) instead of the static
+                        // light/dark pair every other wallpaper uses.
+                        const preview = w.live ? resolveWallpaperStyle(w.id, colorMode) : (colorMode === "dark" ? w.dark : w.light);
                         const active = chatWallpaper === w.id;
                         return (
                           <button key={w.id} onClick={() => { setChatWallpaper(w.id); hapticLight(); }}
-                            title={w.name}
+                            title={w.live ? `${w.name} — shifts with the time of day` : w.name}
                             aria-label={`${w.name} wallpaper${active ? " (selected)" : ""}`}
                             aria-pressed={active}
                             className={cn("h-16 w-16 rounded-2xl shrink-0 border-2 transition-all relative overflow-hidden",
-                              active ? "border-foreground" : "border-transparent")}
+                              active ? "border-primary" : "border-transparent")}
                             style={{ background: preview }}>
+                            {w.live && (
+                              <span className="absolute top-1 left-1 h-3.5 w-3.5 rounded-full bg-black/30 flex items-center justify-center">
+                                <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
+                              </span>
+                            )}
                             {active && (
                               <span className="absolute inset-0 flex items-center justify-center bg-black/10">
                                 <Check className="h-4 w-4 text-white drop-shadow" aria-hidden="true" />
@@ -704,13 +968,19 @@ const Settings = () => {
                   </div>
                 ))}
               </div>
+              {chatWallpaper === "w-dynamic-sky" && (
+                <p className="text-[10px] text-muted-foreground mt-3">
+                  Dynamic Sky shifts continuously through night, dawn, day and dusk colors as the real time changes — like Apple's dynamic wallpapers.
+                </p>
+              )}
             </div>
           </div>
-        </section>
+        </SectionShell>
+
 
         {/* Anniversary */}
-        <section hidden={!matches("anniversary date love")}>
-          <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-2.5 sticky top-[112px] z-10 bg-background/85 backdrop-blur-sm py-1 -mx-1 px-1 rounded">Anniversary</p>
+        <SectionShell id="anniversary" title="Anniversary" keywords="anniversary date love"
+          matches={matches} isOpen={!collapsedSections.anniversary} isSearching={isSearching} onToggle={toggleSection}>
           <div className="bg-card rounded-2xl border border-border/60 p-4 space-y-2">
             <p className="text-sm font-medium">Your special date 💕</p>
             <input type="date" value={appSettings.anniversaryDate||""}
@@ -720,12 +990,14 @@ const Settings = () => {
               <button onClick={() => { hapticLight(); updateSetting("anniversaryDate",null); }} className="text-[11px] text-destructive">Remove</button>
             )}
           </div>
-        </section>
+        </SectionShell>
 
-        {/* Data */}
-        <section hidden={!matches("data backup cloud sync recovery restore")}>
-          <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-2.5 sticky top-[112px] z-10 bg-background/85 backdrop-blur-sm py-1 -mx-1 px-1 rounded">Data & Backup</p>
-          <div className="bg-card rounded-2xl border border-border/60 divide-y divide-border/40">
+        {/* Data & Backup — includes Cloud Sync status plus the BackupManager
+            and DailyKeyManager sub-components, grouped so they collapse
+            together instead of adding three separate scroll stops. */}
+        <SectionShell id="data" title="Data & Backup" keywords="data backup cloud sync recovery restore key daily"
+          matches={matches} isOpen={!collapsedSections.data} isSearching={isSearching} onToggle={toggleSection}>
+          <div className="bg-card rounded-2xl border border-border/60 divide-y divide-border/40 mb-2">
             <div className="flex items-center gap-3 px-4 py-3">
               <Download className="h-4 w-4 text-muted-foreground shrink-0" />
               <div className="flex-1 min-w-0"><p className="text-sm font-medium">Cloud Sync</p><p className="text-[11px] text-muted-foreground">All data auto-syncs. Just log in to restore.</p></div>
@@ -736,19 +1008,19 @@ const Settings = () => {
               <div className="flex-1 min-w-0"><p className="text-sm font-medium">Chat Recovery</p><p className="text-[11px] text-muted-foreground">Deleted chats can be recovered from the chat menu.</p></div>
             </div>
           </div>
-        </section>
 
-        {/* Cloud Backup — replaces the old per-user Google Drive flow, which
-            was still being rendered alongside this (duplicate "connect
-            backup" UI) until now. */}
-        <BackupManager />
+          {/* Cloud Backup — replaces the old per-user Google Drive flow, which
+              was still being rendered alongside this (duplicate "connect
+              backup" UI) until now. */}
+          <BackupManager />
 
-        {/* Daily.co per-user key */}
-        <DailyKeyManager />
+          {/* Daily.co per-user key */}
+          <DailyKeyManager />
+        </SectionShell>
 
         {/* WhatsApp Import */}
-        <section hidden={!matches("whatsapp import chat history")}>
-          <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-2.5 sticky top-[112px] z-10 bg-background/85 backdrop-blur-sm py-1 -mx-1 px-1 rounded">Import</p>
+        <SectionShell id="whatsapp" title="Import" keywords="whatsapp import chat history"
+          matches={matches} isOpen={!collapsedSections.whatsapp} isSearching={isSearching} onToggle={toggleSection}>
           <div className="bg-card rounded-2xl border border-border/60">
             <button onClick={() => whatsappFileRef.current?.click()} disabled={importingWhatsApp}
               className="w-full flex items-center gap-3 px-4 py-3 text-left active:scale-[0.98] transition-transform disabled:opacity-50">
@@ -821,6 +1093,37 @@ const Settings = () => {
                 ];
                 const isJunk = (content: string) => JUNK_CONTENT.some(p => p.test(content.trim()));
 
+                // BUG FIX: the previous version decided DD/MM vs MM/DD per line
+                // ("leading number > 12 → day-first, otherwise assume month-first").
+                // A single WhatsApp export uses ONE consistent format throughout, but
+                // that per-line guess silently swapped day/month on any line where the
+                // leading number was ambiguous (1-12) — about 40% of all dates in a
+                // typical month — scrambling chronological order within the imported
+                // chat and, combined with real-time messages, elsewhere in the timeline.
+                // Now: scan every date in the file ONCE first. If any date's first
+                // number is >12, the whole file MUST be DD/MM (that's the only reading
+                // that makes every date valid). If any date's second number is >12, the
+                // whole file MUST be MM/DD. Apply that single determination to every
+                // line. Only falls back to a per-file default (day-first — the more
+                // common WhatsApp export format outside the US) if the file is fully
+                // ambiguous (every date has both components ≤12).
+                let dayFirst: boolean | null = null;
+                {
+                  const dateRe = /^\[?(\d{1,4}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/;
+                  for (const rawLine of lines) {
+                    const dm = stripMarks(rawLine).match(dateRe);
+                    if (!dm) continue;
+                    const dp = dm[1].replace(/[\-\.]/g, "/");
+                    const p = dp.split("/");
+                    if (p.length !== 3 || p[0].length === 4) continue; // YYYY-MM-DD is unambiguous, skip
+                    const first = parseInt(p[0], 10);
+                    const second = parseInt(p[1], 10);
+                    if (first > 12) { dayFirst = true; break; }
+                    if (second > 12) { dayFirst = false; break; }
+                  }
+                  if (dayFirst === null) dayFirst = true; // ambiguous file-wide → default to day-first
+                }
+
                 // WA-03 FIX: Robust timestamp parser that handles:
                 //   - 12h with uppercase AM/PM  ✅ (JS native)
                 //   - 12h with lowercase am/pm  ❌ JS rejects → manual normalise
@@ -833,17 +1136,15 @@ const Settings = () => {
                   if (parts.length !== 3) return null;
 
                   let [a, b, c] = parts;
-                  // WA-07 FIX: Disambiguate DD/MM vs MM/DD.
-                  // If the leading group is 4-digits → it's YYYY, reorder to MM/DD/YYYY.
-                  // If the leading group is >12    → it must be DD, swap to MM/DD/YYYY.
-                  // Otherwise treat as MM/DD/YYYY (US format, most common in WhatsApp).
-                  // Expand 2-digit year → 4-digit (00–29 → 2000–2029, 30–99 → 1930–1999).
+                  // WA-07 FIX: Disambiguate DD/MM vs MM/DD using the file-wide format
+                  // determined above, so every line in a single export is parsed the
+                  // same way. Expand 2-digit year → 4-digit (00–29 → 2000–2029, 30–99 → 1930–1999).
                   let month: string, day: string, year: string;
                   if (a.length === 4) {          // YYYY-MM-DD
                     [year, month, day] = [a, b, c];
-                  } else if (parseInt(a) > 12) { // DD/MM/YYYY or DD/MM/YY
+                  } else if (dayFirst) {         // DD/MM/YYYY or DD/MM/YY
                     [day, month, year] = [a, b, c];
-                  } else {                        // MM/DD/YYYY or MM/DD/YY (US default)
+                  } else {                        // MM/DD/YYYY or MM/DD/YY
                     [month, day, year] = [a, b, c];
                   }
                   if (year.length === 2) year = (parseInt(year) <= 29 ? "20" : "19") + year;
@@ -944,28 +1245,39 @@ const Settings = () => {
               </DialogFooter>
             </DialogContent>
           </Dialog>
-        </section>
+        </SectionShell>
 
         <CodeSurpriseEditor partnerId={currentPartner} />
       </div>
 
       {/* PIN Setup Dialog */}
-      <Dialog open={showPinDialog} onOpenChange={v => { if(!v){setPinInput("");setPinStep("enter");setPinFirst("");} setShowPinDialog(v); }}>
+      <Dialog open={showPinDialog} onOpenChange={v => { if(!v){setPinInput("");setPinStep("enter");setPinFirst("");setPinVerifyError(false);setPinVerifyAttempts(0);} setShowPinDialog(v); }}>
         <DialogContent className="rounded-2xl max-w-[320px]">
           <DialogHeader>
-            <DialogTitle className="text-base">{pinStep==="enter"?"Enter new PIN":"Confirm PIN"}</DialogTitle>
-            <DialogDescription>{pinStep==="enter"?"Choose a 6-digit PIN":"Enter the same PIN again"}</DialogDescription>
+            <DialogTitle className="text-base">
+              {pinStep==="verify" ? "Enter current PIN" : pinStep==="enter" ? "Enter new PIN" : "Confirm PIN"}
+            </DialogTitle>
+            <DialogDescription>
+              {pinStep==="verify" ? "Confirm it's you before changing your PIN" : pinStep==="enter" ? "Choose a 6-digit PIN" : "Enter the same PIN again"}
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <div className="flex gap-2 justify-center">
+            <div className={`flex gap-2 justify-center ${pinVerifyError ? "animate-[shake_0.3s]" : ""}`}>
               {Array.from({ length:6 }).map((_,i) => (
-                <div key={i} className={`h-4 w-4 rounded-full border-2 transition-all ${pinInput.length>i?"bg-foreground border-foreground":"border-border"}`} />
+                <div key={i} className={`h-4 w-4 rounded-full border-2 transition-all ${
+                  pinVerifyError ? "bg-destructive border-destructive" :
+                  pinInput.length>i?"bg-primary border-primary":"border-border"
+                }`} />
               ))}
             </div>
+            {pinStep==="verify" && pinVerifyError && (
+              <p className="text-center text-[11px] text-destructive">Wrong PIN — {5 - pinVerifyAttempts} attempt{5 - pinVerifyAttempts===1?"":"s"} left</p>
+            )}
             <div className="grid grid-cols-3 gap-3">
               {["1","2","3","4","5","6","7","8","9","","0","⌫"].map((d,i) => (
                 <button key={i} onClick={() => handlePinDigit(d)}
-                  className={`h-14 rounded-xl flex items-center justify-center text-lg font-medium transition-all active:scale-90 ${d?"bg-card border border-border text-foreground":"invisible"}`}>
+                  disabled={pinStep==="verify" && pinVerifyAttempts>=5}
+                  className={`h-14 rounded-xl flex items-center justify-center text-lg font-medium transition-all active:scale-90 disabled:opacity-40 ${d?"bg-card border border-border text-foreground":"invisible"}`}>
                   {d}
                 </button>
               ))}
@@ -987,7 +1299,7 @@ const Settings = () => {
           {showPartnerScanner && (
             <QRSignInScanner
               onClose={() => setShowPartnerScanner(false)}
-              onSuccess={() => { setShowPartnerScanner(false); toast({ title: "Linked ✓" }); }}
+              onPartnerLinked={() => { setShowPartnerScanner(false); toast({ title: "Linked ✓", description: "Waiting for partner to finish signup." }); }}
               onSignupInvite={() => { setShowPartnerScanner(false); toast({ title: "Linked ✓", description: "Waiting for partner to finish signup." }); }}
             />
           )}
@@ -1001,16 +1313,16 @@ const Settings = () => {
           <DialogHeader><DialogTitle className="text-base">Find your partner</DialogTitle><DialogDescription>Search by username or phone</DialogDescription></DialogHeader>
           <div className="flex gap-2">
             <Input value={searchTerm} onChange={e=>setSearchTerm(e.target.value)} placeholder="Username or +1234567890" className="rounded-xl flex-1" onKeyDown={e=>e.key==="Enter"&&searchPartners()} />
-            <Button onClick={searchPartners} disabled={searching} size="sm" className="rounded-xl bg-foreground text-background"><Search className="h-4 w-4" /></Button>
+            <Button onClick={searchPartners} disabled={searching} size="sm" className="rounded-xl bg-primary text-primary-foreground"><Search className="h-4 w-4" /></Button>
           </div>
           {searchResults.length>0 && (
             <div className="space-y-2 mt-2">
               {searchResults.map((r:any) => (
                 <div key={r.user_id} className="flex items-center gap-3 bg-muted/40 rounded-xl p-3">
                   {r.avatar_url ? <img src={r.avatar_url} className="h-8 w-8 rounded-full object-cover" />
-                    : <div className="h-8 w-8 rounded-full bg-accent flex items-center justify-center text-xs font-semibold">{(r.display_name||"?").charAt(0).toUpperCase()}</div>}
+                    : <div className="h-8 w-8 rounded-full bg-accent flex items-center justify-center text-xs font-semibold text-accent-foreground">{(r.display_name||"?").charAt(0).toUpperCase()}</div>}
                   <div className="flex-1 min-w-0"><p className="text-sm font-medium truncate">{r.display_name}</p>{r.username&&<p className="text-[10px] text-muted-foreground">@{r.username}</p>}</div>
-                  <Button onClick={()=>sendPartnerRequest(r.user_id)} size="sm" className="rounded-full h-7 px-3 text-[10px] bg-foreground text-background"><UserPlus className="h-3 w-3 mr-1" /> Request</Button>
+                  <Button onClick={()=>sendPartnerRequest(r.user_id)} size="sm" className="rounded-full h-9 px-3 text-[10px] bg-primary text-primary-foreground"><UserPlus className="h-3 w-3 mr-1" /> Request</Button>
                 </div>
               ))}
             </div>
@@ -1019,15 +1331,36 @@ const Settings = () => {
       </Dialog>
 
       <ThemeStudio open={showThemeStudio} onOpenChange={setShowThemeStudio} />
+      <IconStudio open={showIconStudio} onOpenChange={setShowIconStudio} appName={appName} onApply={setAppIcon} />
       <PeekConfigDialog open={showPeekConfig} onClose={() => setShowPeekConfig(false)} />
+      <MoodHistory open={showMoodHistory} onClose={() => setShowMoodHistory(false)} />
 
       <Dialog open={showDeviceQr} onOpenChange={setShowDeviceQr}>
         <DialogContent className="rounded-2xl max-w-[360px]">
           <DialogHeader>
-            <DialogTitle className="text-base">Sign in on another device</DialogTitle>
-            <DialogDescription>Open the Auth screen on your other device, tap “Sign in with QR”, and scan this code.</DialogDescription>
+            <DialogTitle className="text-base">QR code</DialogTitle>
+            <DialogDescription>Show your code, or scan one from another device.</DialogDescription>
           </DialogHeader>
-          {showDeviceQr && <QRSignInDisplay mode="device_pairing" onClose={() => setShowDeviceQr(false)} />}
+          {showDeviceQr && (
+            <Tabs value={devicesQrPanel} onValueChange={(v) => setDevicesQrPanel(v as "scan" | "show")} className="w-full">
+              <TabsList className="grid w-full grid-cols-2 rounded-xl bg-muted/50">
+                <TabsTrigger value="scan" className="rounded-lg text-xs">Scan a QR</TabsTrigger>
+                <TabsTrigger value="show" className="rounded-lg text-xs">Show my QR</TabsTrigger>
+              </TabsList>
+              <TabsContent value="scan" className="mt-4">
+                <QRSignInScanner
+                  onClose={() => setShowDeviceQr(false)}
+                  onSuccess={() => setShowDeviceQr(false)}
+                  onPartnerLinked={() => setShowDeviceQr(false)}
+                  onSignupInvite={() => { setShowDeviceQr(false); toast({ title: "That QR is for someone else's signup", description: "Have them scan it from the Auth screen instead." }); }}
+                />
+              </TabsContent>
+              <TabsContent value="show" className="mt-4">
+                <p className="text-xs text-muted-foreground text-center mb-3 px-2">Open the Auth screen on your other device, tap "Sign in with QR", and scan this code.</p>
+                <QRSignInDisplay mode="device_pairing" onClose={() => setShowDeviceQr(false)} />
+              </TabsContent>
+            </Tabs>
+          )}
         </DialogContent>
       </Dialog>
 

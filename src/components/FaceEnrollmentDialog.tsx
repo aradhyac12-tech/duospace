@@ -6,7 +6,9 @@
  * and strict cleanup so no stream leaks across remounts or route changes.
  *
  * UX: live front-camera preview, progress ring, automatic capture every
- * ~600ms once a single, well-sized face is in view, "Save" once 5+ samples.
+ * ~600ms once a single, well-sized face is in view — samples too similar in
+ * yaw to ones already captured are rejected so "Save" (5+ samples, spanning
+ * a real angle range) actually reflects pose diversity, not just a count.
  */
 
 import { useEffect, useRef, useState, useCallback } from "react";
@@ -36,6 +38,13 @@ const MIN_SAMPLES = 5;
 const MAX_SAMPLES = 10;
 const MIN_FACE_AREA = 0.05;
 const SAMPLE_INTERVAL_MS = 600;
+// A candidate sample is only accepted if its yaw is meaningfully different
+// from every sample already captured — otherwise 5-10 near-identical
+// frontal frames pass as "enrolled" and the owner profile has no real pose
+// coverage, which is what actually hurts match accuracy against a real head
+// turn later. Also require the *final* set to span a minimum overall range.
+const MIN_YAW_STEP = 0.02;
+const MIN_YAW_SPREAD = 0.05;
 const TELE = "faceEnrollment";
 
 /** Explicit state machine for the enrollment camera. */
@@ -58,7 +67,7 @@ const FaceEnrollmentDialog = ({ open, onClose, onEnrolled }: Props) => {
   const traceRef    = useRef<string>("");
   const trackEndedRef = useRef<(() => void) | null>(null);
 
-  const [samples, setSamples]       = useState<Float32Array[]>([]);
+  const [samples, setSamples]       = useState<{ embedding: Float32Array; yaw: number }[]>([]);
   const [camState, setCamState]     = useState<CamState>("idle");
   const [hint, setHint]             = useState("Position your face in the frame");
   const [errorCode, setErrorCode]   = useState<ReturnType<typeof explainGumError>["code"] | null>(null);
@@ -107,7 +116,7 @@ const FaceEnrollmentDialog = ({ open, onClose, onEnrolled }: Props) => {
     const trace = newTraceId("enroll");
     traceRef.current = trace;
 
-    safeSet(setSamples, [] as Float32Array[]);
+    safeSet(setSamples, [] as { embedding: Float32Array; yaw: number }[]);
     safeSet(setErrorCode, null as ReturnType<typeof explainGumError>["code"] | null);
     safeSet(setHint, "Starting camera…");
     safeSet(setCamState, "requesting_permission" as CamState);
@@ -265,8 +274,20 @@ const FaceEnrollmentDialog = ({ open, onClose, onEnrolled }: Props) => {
       const f = faces[0];
       if (f.area < MIN_FACE_AREA)    { safeSet(setHint, "Move closer to the camera"); return; }
 
-      hapticLight();
-      setSamples((s) => (s.length >= MAX_SAMPLES ? s : [...s, f.embedding]));
+      setSamples((s) => {
+        if (s.length >= MAX_SAMPLES) return s;
+        const tooSimilar = s.some((prev) => Math.abs(prev.yaw - f.pose.yaw) < MIN_YAW_STEP);
+        if (tooSimilar && s.length >= 1) {
+          // Don't silently drop it forever — nudge for a new angle. (Not
+          // naming "left"/"right" here: raw camera-frame yaw direction vs.
+          // the mirrored on-screen preview isn't consistent across every
+          // browser/platform, so a confident direction could be backwards.)
+          safeSet(setHint, `Captured ${s.length}/${MIN_SAMPLES}+ — turn your head a bit more to vary the angle`);
+          return s;
+        }
+        hapticLight();
+        return [...s, { embedding: f.embedding, yaw: f.pose.yaw }];
+      });
     }, SAMPLE_INTERVAL_MS);
 
     return () => {
@@ -274,18 +295,25 @@ const FaceEnrollmentDialog = ({ open, onClose, onEnrolled }: Props) => {
     };
   }, [camState, open, samples.length, safeSet]);
 
+  const yawSpread = samples.length > 1
+    ? Math.max(...samples.map((s) => s.yaw)) - Math.min(...samples.map((s) => s.yaw))
+    : 0;
+  const hasEnoughDiversity = samples.length >= MIN_SAMPLES && yawSpread >= MIN_YAW_SPREAD;
+
   // Hint side-effect (kept out of setState updaters)
   useEffect(() => {
     if (camState !== "active") return;
     if (samples.length === 0) return;
     if (samples.length < MIN_SAMPLES) {
       setHint(`Captured ${samples.length}/${MIN_SAMPLES}+ — turn slightly`);
+    } else if (!hasEnoughDiversity) {
+      setHint(`Captured ${samples.length}/${MIN_SAMPLES}+ — turn a bit more, angles are too similar`);
     } else if (samples.length < MAX_SAMPLES) {
       setHint(`Captured ${samples.length}/${MAX_SAMPLES} — looking good`);
     } else {
       setHint("All set — tap Save to enroll");
     }
-  }, [samples.length, camState]);
+  }, [samples.length, hasEnoughDiversity, camState]);
 
   const reset = useCallback(() => {
     setSamples([]);
@@ -299,9 +327,13 @@ const FaceEnrollmentDialog = ({ open, onClose, onEnrolled }: Props) => {
       toast({ title: `Need at least ${MIN_SAMPLES} samples`, variant: "destructive" });
       return;
     }
+    if (yawSpread < MIN_YAW_SPREAD) {
+      toast({ title: "Need a bit more angle variety", description: "Turn your head slightly between captures.", variant: "destructive" });
+      return;
+    }
     setIsSaving(true);
     try {
-      await saveOwnerProfile(samples);
+      await saveOwnerProfile(samples.map((s) => s.embedding));
       hapticMedium();
       toast({ title: "Owner face enrolled", description: `${samples.length} samples saved` });
       cleanupCamera("enrollment-success");
@@ -312,7 +344,7 @@ const FaceEnrollmentDialog = ({ open, onClose, onEnrolled }: Props) => {
       toast({ title: "Failed to save profile", variant: "destructive" });
       if (mountedRef.current) setIsSaving(false);
     }
-  }, [samples, toast, onEnrolled, onClose, cleanupCamera]);
+  }, [samples, yawSpread, toast, onEnrolled, onClose, cleanupCamera]);
 
   const removeProfile = useCallback(async () => {
     await clearOwnerProfile();
@@ -380,7 +412,7 @@ const FaceEnrollmentDialog = ({ open, onClose, onEnrolled }: Props) => {
           )}
           {isErrored && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/85 text-white text-xs px-5 text-center">
-              <ShieldAlert className="h-6 w-6 text-red-400" />
+              <ShieldAlert className="h-6 w-6 text-destructive" />
               <p className="leading-relaxed">{hint}</p>
               {errorCode === "denied" && (
                 <p className="text-[10px] text-white/60">
@@ -421,8 +453,8 @@ const FaceEnrollmentDialog = ({ open, onClose, onEnrolled }: Props) => {
           <Button
             size="sm"
             onClick={save}
-            disabled={samples.length < MIN_SAMPLES || isSaving}
-            className={cn(samples.length >= MIN_SAMPLES && "bg-primary")}
+            disabled={!hasEnoughDiversity || isSaving}
+            className={cn(hasEnoughDiversity && "bg-primary")}
           >
             {isSaving
               ? <Loader2 className="h-3.5 w-3.5 animate-spin" />

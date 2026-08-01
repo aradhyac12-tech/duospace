@@ -4,7 +4,6 @@ import { useSwipeNav } from "@/hooks/useSwipeNav";
 import { AnimatePresence, motion } from "framer-motion";
 
 import FloatingDock from "@/components/FloatingDock";
-import SurpriseOverlay from "@/components/SurpriseOverlay";
 import MoodDetector from "@/components/MoodDetector";
 import EmojiScreenEffect from "@/components/EmojiScreenEffect";
 import OfflineBanner from "@/components/OfflineBanner";
@@ -12,6 +11,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { GroicProvider } from "@/contexts/GroicContext";
 import GroicMiniPlayer from "@/components/GroicMiniPlayer";
 import GroicFullPlayer from "@/components/GroicFullPlayer";
+import GroicInviteBanner from "@/components/GroicInviteBanner";
 import { useAppNative } from "@/hooks/useAppNative";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useSessionGuard } from "@/hooks/useSessionGuard";
@@ -25,11 +25,10 @@ const AppLayout = () => {
   const location = useLocation();
   const { toast } = useToast();
 
-  // Swipe left/right between the main tabs (Chat -> Calls -> Settings),
-  // mirroring the bottom nav order. Direction is tracked so the page
-  // transition can slide the correct way for BOTH swipe and tap navigation,
-  // not just an instant cut.
-  const SWIPE_NAV_ORDER = ["/chat", "/calls", "/settings"];
+  // Swipe left/right between the main tabs (Chat -> Calls), mirroring the
+  // bottom dock order. Direction is tracked so the page transition can slide
+  // the correct way for BOTH swipe and tap navigation, not just an instant cut.
+  const SWIPE_NAV_ORDER = ["/chat", "/calls"];
   const prevPathname = useRef(location.pathname);
   const direction = useRef(0); // 1 = forward/next, -1 = back/prev, 0 = unrelated nav
   const currentTabIndex = SWIPE_NAV_ORDER.indexOf(location.pathname);
@@ -129,8 +128,8 @@ const AppLayout = () => {
         </main>
         <GroicMiniPlayer />
         <GroicFullPlayer />
+        <GroicInviteBanner />
         <FloatingDock />
-        <SurpriseOverlay />
         <MoodDetector />
         <EmojiScreenEffect />
       </div>

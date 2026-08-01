@@ -17,16 +17,6 @@ insert into storage.buckets (id, name, public, file_size_limit)
 values ('backups','backups',false,52428800)
 on conflict (id) do nothing;
 
--- chat-files: public read (bucket serves via CDN so partners can display each
--- other's media without signing URLs), per-sender uid/ prefix, 25 MB.
-insert into storage.buckets (id, name, public, file_size_limit)
-values ('chat-files','chat-files',true,26214400)
-on conflict (id) do update set public = excluded.public;
-
-
-
-
-
 -- ── RLS on storage.objects ───────────────────────────────────────────────
 -- avatars: everyone reads (public bucket already implies public read via
 -- the CDN, but the objects policy still gates the S3 API), owner writes.
@@ -76,32 +66,4 @@ do $$ begin
       with check (bucket_id = 'backups'
                   and (storage.foldername(name))[1] = auth.uid()::text);
   end if;
-
-  -- chat-files: sender may write to their own uid/ prefix.
-  if not exists (select 1 from pg_policies where policyname = 'chat-files owner write') then
-    create policy "chat-files owner write" on storage.objects
-      for insert to authenticated
-      with check (bucket_id = 'chat-files'
-                  and (storage.foldername(name))[1] = auth.uid()::text);
-  end if;
-  if not exists (select 1 from pg_policies where policyname = 'chat-files owner modify') then
-    create policy "chat-files owner modify" on storage.objects
-      for update to authenticated
-      using (bucket_id = 'chat-files'
-             and (storage.foldername(name))[1] = auth.uid()::text);
-  end if;
-  if not exists (select 1 from pg_policies where policyname = 'chat-files owner delete') then
-    create policy "chat-files owner delete" on storage.objects
-      for delete to authenticated
-      using (bucket_id = 'chat-files'
-             and (storage.foldername(name))[1] = auth.uid()::text);
-  end if;
-  -- Read: public (bucket is public; policy still needed for S3 API access).
-  if not exists (select 1 from pg_policies where policyname = 'chat-files public read') then
-    create policy "chat-files public read" on storage.objects
-      for select to anon, authenticated
-      using (bucket_id = 'chat-files');
-  end if;
-
 end $$;
-

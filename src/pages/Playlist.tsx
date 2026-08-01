@@ -471,15 +471,17 @@ const Playlist = () => {
         <div className="flex items-center gap-2">
           <button
             onClick={() => { hapticLight(); setShowSearch(!showSearch); }}
+            aria-label={showSearch ? "Close search" : "Search songs"}
             className="h-9 w-9 rounded-xl bg-accent flex items-center justify-center"
           >
-            <Search className="h-5 w-5 text-foreground" />
+            <Search className="h-5 w-5 text-accent-foreground" aria-hidden="true" />
           </button>
           <button
             onClick={() => setShowAddDialog(true)}
+            aria-label="Add song"
             className="h-9 w-9 rounded-xl bg-accent flex items-center justify-center"
           >
-            <Plus className="h-5 w-5 text-foreground" />
+            <Plus className="h-5 w-5 text-accent-foreground" aria-hidden="true" />
           </button>
         </div>
       </PageHeader>
@@ -501,15 +503,17 @@ const Playlist = () => {
             <div className="flex gap-2">
               <button
                 onClick={declineBlend}
-                className="h-8 w-8 rounded-full bg-muted flex items-center justify-center"
+                aria-label="Decline blend invite"
+                className="h-10 w-10 rounded-full bg-muted flex items-center justify-center"
               >
-                <X className="h-4 w-4" />
+                <X className="h-4 w-4" aria-hidden="true" />
               </button>
               <button
                 onClick={acceptBlend}
-                className="h-8 w-8 rounded-full bg-primary flex items-center justify-center"
+                aria-label="Accept blend invite"
+                className="h-10 w-10 rounded-full bg-primary flex items-center justify-center"
               >
-                <Check className="h-4 w-4 text-primary-foreground" />
+                <Check className="h-4 w-4 text-primary-foreground" aria-hidden="true" />
               </button>
             </div>
           </motion.div>
@@ -530,7 +534,7 @@ const Playlist = () => {
           partnerId && (
             <button
               onClick={sendBlendInvite}
-              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-dashed border-border text-xs text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors"
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-dashed border-border text-xs text-muted-foreground hover:text-accent hover:border-accent/40 transition-colors"
             >
               <Users className="h-3.5 w-3.5" /> Start Blend – Listen Together
             </button>
@@ -559,7 +563,7 @@ const Playlist = () => {
                 onClick={handleSearch}
                 disabled={searching}
                 size="sm"
-                className="rounded-xl bg-foreground text-background px-4"
+                className="rounded-xl bg-primary text-primary-foreground px-4"
               >
                 {searching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
               </Button>
@@ -645,40 +649,44 @@ const Playlist = () => {
                 {/* Playback controls */}
                 <div className="flex items-center justify-center gap-5">
                   <button
-                    onClick={toggleShuffle}
-                    className={`h-8 w-8 rounded-full flex items-center justify-center transition-colors ${
+                    onClick={() => { hapticLight(); toggleShuffle(); }}
+                    aria-label={shuffleOn ? "Turn off shuffle" : "Turn on shuffle"}
+                    aria-pressed={shuffleOn}
+                    className={`h-9 w-9 rounded-full flex items-center justify-center transition-all duration-150 active:scale-90 ${
                       shuffleOn ? "text-primary" : "text-muted-foreground"
                     }`}
                   >
-                    <Shuffle className="h-4 w-4" />
+                    <Shuffle className="h-4 w-4" aria-hidden="true" />
                   </button>
 
-                  <button onClick={playPrev} className="h-10 w-10 rounded-full bg-muted flex items-center justify-center">
-                    <SkipBack className="h-4 w-4" />
+                  <button onClick={() => { hapticLight(); playPrev(); }} aria-label="Previous track" className="h-10 w-10 rounded-full bg-muted flex items-center justify-center active:scale-90 transition-transform">
+                    <SkipBack className="h-4 w-4" aria-hidden="true" />
                   </button>
 
                   <button
-                    onClick={togglePlay}
-                    className="h-14 w-14 rounded-full bg-foreground flex items-center justify-center shadow-lg"
+                    onClick={() => { hapticMedium(); togglePlay(); }}
+                    aria-label={isPlaying ? "Pause" : "Play"}
+                    className="h-14 w-14 rounded-full bg-primary flex items-center justify-center shadow-lg active:scale-90 transition-transform"
                   >
                     {isPlaying ? (
-                      <Pause className="h-6 w-6 text-background" />
+                      <Pause className="h-6 w-6 text-primary-foreground" aria-hidden="true" />
                     ) : (
-                      <Play className="h-6 w-6 text-background ml-0.5" />
+                      <Play className="h-6 w-6 text-primary-foreground ml-0.5" aria-hidden="true" />
                     )}
                   </button>
 
-                  <button onClick={playNext} className="h-10 w-10 rounded-full bg-muted flex items-center justify-center">
-                    <SkipForward className="h-4 w-4" />
+                  <button onClick={() => { hapticLight(); playNext(); }} aria-label="Next track" className="h-10 w-10 rounded-full bg-muted flex items-center justify-center active:scale-90 transition-transform">
+                    <SkipForward className="h-4 w-4" aria-hidden="true" />
                   </button>
 
                   <button
-                    onClick={cycleRepeat}
-                    className={`h-8 w-8 rounded-full flex items-center justify-center transition-colors ${
+                    onClick={() => { hapticLight(); cycleRepeat(); }}
+                    aria-label={`Repeat: ${repeatMode === "off" ? "off" : repeatMode === "one" ? "one song" : "all"}. Tap to change`}
+                    className={`h-9 w-9 rounded-full flex items-center justify-center transition-all duration-150 active:scale-90 ${
                       repeatMode !== "off" ? "text-primary" : "text-muted-foreground"
                     }`}
                   >
-                    {repeatMode === "one" ? <Repeat1 className="h-4 w-4" /> : <Repeat className="h-4 w-4" />}
+                    {repeatMode === "one" ? <Repeat1 className="h-4 w-4" aria-hidden="true" /> : <Repeat className="h-4 w-4" aria-hidden="true" />}
                   </button>
                 </div>
               </div>
@@ -692,7 +700,7 @@ const Playlist = () => {
         {songs.length === 0 ? (
           <div className="text-center py-16 space-y-3">
             <div className="h-16 w-16 rounded-2xl bg-accent flex items-center justify-center mx-auto">
-              <Music className="h-8 w-8 text-muted-foreground" />
+              <Music className="h-8 w-8 text-accent-foreground/70" />
             </div>
             <p className="text-sm text-muted-foreground">No songs yet. Add your first song!</p>
             <div className="flex gap-2 justify-center">
@@ -723,8 +731,8 @@ const Playlist = () => {
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, x: -80 }}
                   transition={{ delay: i * 0.02 }}
-                  onClick={() => playSong(song)}
-                  className={`flex items-center gap-3 p-3 rounded-2xl border transition-colors cursor-pointer ${
+                  onClick={() => { hapticLight(); playSong(song); }}
+                  className={`flex items-center gap-3 p-3 rounded-2xl border transition-all duration-150 active:scale-[0.98] cursor-pointer ${
                     isCurrent
                       ? "bg-primary/5 border-primary/20"
                       : "bg-card border-border hover:bg-accent/30"
@@ -763,9 +771,10 @@ const Playlist = () => {
                         e.stopPropagation();
                         deleteSong(song.id);
                       }}
-                      className="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-destructive transition-colors"
+                      aria-label="Delete song"
+                      className="h-10 w-10 rounded-lg flex items-center justify-center text-muted-foreground hover:text-destructive transition-colors"
                     >
-                      <Trash2 className="h-4 w-4" />
+                      <Trash2 className="h-4 w-4" aria-hidden="true" />
                     </button>
                   )}
                 </motion.div>
@@ -819,7 +828,7 @@ const Playlist = () => {
             <Button
               onClick={addSong}
               disabled={!newSong.url.trim()}
-              className="rounded-xl bg-foreground text-background w-full"
+              className="rounded-xl bg-primary text-primary-foreground w-full"
             >
               Add Song
             </Button>

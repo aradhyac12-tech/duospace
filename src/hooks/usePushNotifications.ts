@@ -5,6 +5,49 @@ import { useAuth } from "./useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "./use-toast";
 
+// Maps every `type` the send-push Edge Function can send (see
+// supabase/functions/_shared/pushTypes.ts) to where tapping the
+// notification should take the user. Kept as a plain function (not part of
+// the hook) so it has no dependency on component state.
+function routeForNotificationData(data: Record<string, unknown> | undefined) {
+  const type = typeof data?.type === "string" ? data.type : undefined;
+  switch (type) {
+    case "chat_message":
+    case "image_message":
+    case "video_message":
+    case "audio_message":
+    case "file_message":
+    case "reply":
+    case "reaction":
+    case "mention":
+    case "group_message":
+    case "typing":
+      window.location.href = "/chat";
+      return;
+    case "incoming_audio_call":
+    case "incoming_video_call":
+    case "missed_call":
+    case "call_ended":
+    case "call_rejected":
+      window.location.href = "/chat";
+      return;
+    case "friend_request":
+    case "friend_accepted":
+      window.location.href = "/settings";
+      return;
+    case "group_invitation":
+      window.location.href = "/us";
+      return;
+    case "custom":
+    default:
+      // Unknown/legacy payloads (e.g. from before this taxonomy existed)
+      // fall back to the old ad hoc "message"/"call" values, then home.
+      if (data?.type === "message") window.location.href = "/chat";
+      else if (data?.type === "call") window.location.href = "/chat";
+      return;
+  }
+}
+
 // Fix #11: Actually persist the push token to Supabase so server can deliver notifications.
 export const usePushNotifications = () => {
   const { user } = useAuth();
@@ -63,11 +106,36 @@ export const usePushNotifications = () => {
     const actionPromise = PushNotifications.addListener(
       "pushNotificationActionPerformed",
       (action: ActionPerformed) => {
-        const data = action.notification.data;
-        if (data?.type === "message") window.location.href = "/chat";
-        else if (data?.type === "call")   window.location.href = "/calls";
+        routeForNotificationData(action.notification.data);
       }
     );
+
+    // Fired by MainActivity.kt (see scripts/patch-native-permissions.mjs)
+    // when the user taps Accept/Decline on a full-screen incoming-call
+    // notification, or taps the notification itself while the call is
+    // still ringing. Not a Capacitor API — a plain CustomEvent the native
+    // side dispatches into the WebView via evaluateJavascript.
+    const handleNativeCallAction = (event: Event) => {
+      const detail = (event as CustomEvent).detail as
+        | { callId?: string; action?: string; conversationId?: string; callType?: string; roomName?: string }
+        | undefined;
+      if (!detail?.callId) return;
+
+      if (detail.action === "decline") {
+        // Same effect as tapping Decline inside the app.
+        supabase.from("call_history").update({ status: "missed" }).eq("id", detail.callId).then(
+          () => {},
+          () => {},
+        );
+        return;
+      }
+      // "accept" or a plain tap: navigate in — IncomingCallOverlay's
+      // active-call check (on mount / resume) picks up the still-ringing
+      // call_history row and renders the answer UI itself.
+      window.location.href = "/chat";
+    };
+    window.addEventListener("duospace-call-action", handleNativeCallAction);
+    listenerHandles.push({ remove: () => window.removeEventListener("duospace-call-action", handleNativeCallAction) });
 
     // Collect resolved handles as soon as they're ready
     Promise.all([registrationPromise, errorPromise, notificationPromise, actionPromise])

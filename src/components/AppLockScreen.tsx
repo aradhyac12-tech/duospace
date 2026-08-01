@@ -6,6 +6,7 @@ import { useState, useRef, useEffect } from "react";
 import { Capacitor } from "@capacitor/core";
 import storage from "@/lib/storage";
 import { hashPin, verifyPin, migratePinIfNeeded } from "@/lib/crypto";
+import { hapticTick, hapticLight, hapticMedium } from "@/lib/haptics";
 
 const PIN_LENGTH = 6;
 const STORED_PIN_KEY = "duo-lock-pin";
@@ -49,9 +50,9 @@ const AppLockScreen = () => {
   useEffect(() => { if (!hasBiometric && isAppLocked) setMode("pin"); }, [hasBiometric, isAppLocked]);
 
   const getIcon = () => {
-    if (!hasBiometric) return <KeyRound className="h-10 w-10 text-foreground" />;
-    if (capabilities.method === "face") return <Scan className="h-10 w-10 text-foreground" />;
-    return <Fingerprint className="h-10 w-10 text-foreground" />;
+    if (!hasBiometric) return <KeyRound className="h-10 w-10 text-accent-foreground" />;
+    if (capabilities.method === "face") return <Scan className="h-10 w-10 text-accent-foreground" />;
+    return <Fingerprint className="h-10 w-10 text-accent-foreground" />;
   };
   const getMethodLabel = () => {
     if (!hasBiometric) return "PIN";
@@ -115,7 +116,7 @@ const AppLockScreen = () => {
           <img src={appIcon} alt={appName} className="h-16 w-16 rounded-2xl object-cover shadow-lg" />
         ) : (
           <div className="h-16 w-16 rounded-2xl bg-accent flex items-center justify-center">
-            <Lock className="h-7 w-7 text-foreground" />
+            <Lock className="h-7 w-7 text-accent-foreground" />
           </div>
         )}
         <p className="text-lg font-semibold text-foreground">{appName}</p>
@@ -126,7 +127,7 @@ const AppLockScreen = () => {
         {mode === "biometric" ? (
           <motion.div key="bio" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}
             className="flex flex-col items-center gap-6">
-            <motion.button whileTap={{ scale: 0.92 }} onClick={authenticate}
+            <motion.button whileTap={{ scale: 0.92 }} onClick={() => { hapticMedium(); authenticate(); }}
               className="h-24 w-24 rounded-full bg-accent flex items-center justify-center shadow-lg active:scale-95 transition-transform">
               {getIcon()}
             </motion.button>
@@ -135,7 +136,7 @@ const AppLockScreen = () => {
               {biometricError && <p className="text-xs text-destructive">{biometricError}</p>}
               <p className="text-xs text-muted-foreground">Tap to authenticate</p>
             </div>
-            <button onClick={() => { setMode("pin"); setBiometricError(null); }} className="text-xs text-primary underline">
+            <button onClick={() => { hapticLight(); setMode("pin"); setBiometricError(null); }} className="text-xs text-primary underline">
               Use PIN instead
             </button>
           </motion.div>
@@ -167,7 +168,7 @@ const AppLockScreen = () => {
                       animate={pinError ? { x: [0, -6, 6, -6, 6, 0] } : {}}
                       transition={{ duration: 0.3 }}
                       className={`h-4 w-4 rounded-full border-2 transition-all ${
-                        pin.length > i ? "bg-foreground border-foreground" : "bg-transparent border-border"
+                        pin.length > i ? "bg-primary border-primary" : "bg-transparent border-border"
                       } ${pinError ? "border-destructive" : ""}`}
                     />
                   ))}
@@ -176,7 +177,8 @@ const AppLockScreen = () => {
                 <div className="grid grid-cols-3 gap-4 w-full max-w-[260px]">
                   {DIGITS.flat().map((d, i) => (
                     <button key={i}
-                      onClick={() => d === "⌫" ? handlePinBackspace() : d ? handlePinDigit(d) : null}
+                      onClick={() => { hapticTick(); d === "⌫" ? handlePinBackspace() : d ? handlePinDigit(d) : null; }}
+                      aria-label={d === "⌫" ? "Backspace" : d ? `Digit ${d}` : undefined}
                       className={`h-16 rounded-2xl flex items-center justify-center text-xl font-medium transition-all active:scale-90 ${
                         d ? "bg-card border border-border text-foreground hover:bg-accent" : "invisible"
                       } ${d === "⌫" ? "text-muted-foreground text-base" : ""}`}>
@@ -187,7 +189,7 @@ const AppLockScreen = () => {
               </>
             )}
             {hasBiometric && (
-              <button onClick={() => { setMode("biometric"); setPin(""); }}
+              <button onClick={() => { hapticLight(); setMode("biometric"); setPin(""); }}
                 className="text-xs text-primary underline">
                 Use {getMethodLabel()} instead
               </button>

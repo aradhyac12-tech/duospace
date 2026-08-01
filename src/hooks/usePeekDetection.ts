@@ -146,7 +146,7 @@ export interface PeekDetectionState {
     effectiveIntervalMs: number;
     cameraCovered: boolean;
     tickInFlight: boolean;
-    texture: number;
+    texture: { laplacianVar: number; lumaStdDev: number; suspected: boolean };
   };
 }
 

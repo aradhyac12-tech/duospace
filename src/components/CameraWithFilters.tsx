@@ -3,6 +3,8 @@ import { motion } from "framer-motion";
 import { X, RotateCcw, Send, Sparkles } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { acquireCamera, explainGumError, type CameraLease } from "@/lib/cameraBus";
+import { useMediaPermission } from "@/components/PermissionDeniedSheet";
+import { ensureMediaPermission, fromGumError } from "@/lib/mediaPermissions";
 import { hapticLight, hapticMedium, hapticSelection, hapticCameraShutter, hapticSend } from "@/lib/haptics";
 
 interface FilterDef {
@@ -90,6 +92,7 @@ const CameraWithFilters = ({ onClose, onCapture }: CameraWithFiltersProps) => {
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState("Basic");
   const { toast } = useToast();
+  const { report, permissionSheet } = useMediaPermission();
 
   const categories = [...new Set(FILTERS.map((f) => f.category))];
   const categoryFilters = FILTERS.filter((f) => f.category === selectedCategory);
@@ -103,6 +106,13 @@ const CameraWithFilters = ({ onClose, onCapture }: CameraWithFiltersProps) => {
 
   const startCamera = useCallback(async (facing: "user" | "environment") => {
     releaseLease();
+    // Ask first on native — otherwise getUserMedia is auto-denied by the OS.
+    const perm = await ensureMediaPermission("camera");
+    if (!perm.granted) {
+      setCameraError(perm.message);
+      report(perm, () => startCameraRef.current?.(facing));
+      return;
+    }
     try {
       const lease = await acquireCamera(facing);
       leaseRef.current = lease;
@@ -112,9 +122,15 @@ const CameraWithFilters = ({ onClose, onCapture }: CameraWithFiltersProps) => {
     } catch (err) {
       const { message } = explainGumError(err);
       setCameraError(message);
+      // Busy / blocked device gets the shared recovery sheet, not just a toast.
+      report(fromGumError("camera", err), () => startCameraRef.current?.(facing));
       toast({ title: "Camera unavailable", description: message, variant: "destructive" });
     }
-  }, [releaseLease, toast]);
+  }, [releaseLease, toast, report]);
+
+  // Stable handle so the retry callback above doesn't capture a stale closure.
+  const startCameraRef = useRef<typeof startCamera | null>(null);
+  startCameraRef.current = startCamera;
 
   useEffect(() => {
     startCamera(facingMode);

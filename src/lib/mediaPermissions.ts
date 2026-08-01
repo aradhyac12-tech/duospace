@@ -127,13 +127,13 @@ async function requestNative(kind: MediaPermissionKind): Promise<MediaPermission
     const { Camera } = await import("@capacitor/camera");
     const current = await Camera.checkPermissions();
     const field = kind === "camera" ? "camera" : "photos";
-    if ((current as Record<string, CapState>)[field] === "granted") return ok(kind);
-    if ((current as Record<string, CapState>)[field] === "limited") return ok(kind);
+    if ((current as unknown as Record<string, CapState>)[field] === "granted") return ok(kind);
+    if ((current as unknown as Record<string, CapState>)[field] === "limited") return ok(kind);
     askedOnce.add(kind);
     const next = await Camera.requestPermissions({
       permissions: [field === "camera" ? "camera" : "photos"],
     });
-    return mapCapState(kind, (next as Record<string, CapState>)[field]);
+    return mapCapState(kind, (next as unknown as Record<string, CapState>)[field]);
   } catch (e) {
     logWarn("permissions", `native ${kind} request failed`, e);
     return fail(kind, "unsupported", `${LABEL[kind]} isn't available on this device.`);
@@ -225,7 +225,7 @@ export async function checkMediaPermission(
         const { Camera } = await import("@capacitor/camera");
         const c = await Camera.checkPermissions();
         const field = kind === "camera" ? "camera" : "photos";
-        return mapCapState(kind, (c as Record<string, CapState>)[field]);
+        return mapCapState(kind, (c as unknown as Record<string, CapState>)[field]);
       } catch {
         return fail(kind, "unsupported", `${LABEL[kind]} isn't available on this device.`);
       }
@@ -282,10 +282,13 @@ export async function ensureMediaPermissions(
 export async function openAppSettings(): Promise<boolean> {
   if (!Capacitor.isNativePlatform()) return false;
   try {
-    // Optional dependency: present only when the app is built with it.
-    const mod: {
+    // Optional dependency, resolved at runtime only: present when the app is
+    // built with the native-settings plugin. Kept out of static imports so
+    // the web bundle never tries to resolve it.
+    const specifier = "capacitor-native-settings";
+    const mod = (await import(/* @vite-ignore */ specifier)) as {
       NativeSettings?: { open: (o: unknown) => Promise<unknown> };
-    } = await import(/* @vite-ignore */ "capacitor-native-settings");
+    };
     if (mod?.NativeSettings?.open) {
       await mod.NativeSettings.open({
         optionAndroid: "application_details",
@@ -297,10 +300,10 @@ export async function openAppSettings(): Promise<boolean> {
     /* plugin not installed */
   }
   try {
-    const { App } = await import("@capacitor/app");
     // iOS accepts the app-settings URL directly; Android ignores it.
     if (Capacitor.getPlatform() === "ios") {
-      await App.openUrl({ url: "app-settings:" });
+      const { Browser } = await import("@capacitor/browser");
+      await Browser.open({ url: "app-settings:" });
       return true;
     }
   } catch {

@@ -138,6 +138,16 @@ export interface PeekDetectionState {
   /** id of the most recently logged event in lib/peekEventLog.ts, for
    *  attaching user feedback (accurate / false alarm) after the fact. */
   lastEventId: string | null;
+  /** Dismiss the current alert / re-arm detection. */
+  dismiss: () => void;
+  /** Live internals snapshot for the opt-in debug HUD. */
+  getDebugSnapshot: () => {
+    usingWorker: boolean;
+    effectiveIntervalMs: number;
+    cameraCovered: boolean;
+    tickInFlight: boolean;
+    texture: number;
+  };
 }
 
 export const usePeekDetection = (

@@ -74,11 +74,11 @@ const PhotoViewer = ({ src, onClose }: PhotoViewerProps) => {
           <X className="h-4 w-4 text-white" aria-hidden="true" />
         </button>
         <div className="flex items-center gap-2">
-          <button onClick={() => { hapticMedium(); handleShare(); }} aria-label="Share"
+          <button onClick={(e) => { hapticMedium(); handleShare(e); }} aria-label="Share"
             className="h-9 w-9 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center">
             <Share2 className="h-4 w-4 text-white" aria-hidden="true" />
           </button>
-          <button onClick={() => { hapticMedium(); handleSave(); }} disabled={saving} aria-label="Save to device"
+          <button onClick={(e) => { hapticMedium(); handleSave(e); }} disabled={saving} aria-label="Save to device"
             className="h-9 w-9 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center disabled:opacity-50">
             <Download className="h-4 w-4 text-white" aria-hidden="true" />
           </button>

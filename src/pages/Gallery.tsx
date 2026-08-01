@@ -157,12 +157,12 @@ const MediaViewer = ({
             </button>
           )}
           {/* Share */}
-          <button onClick={() => { hapticMedium(); handleShare(); }} aria-label="Share"
+          <button onClick={(e) => { hapticMedium(); handleShare(e); }} aria-label="Share"
             className="h-9 w-9 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-sm">
             <Share2 className="h-4 w-4 text-white" aria-hidden="true" />
           </button>
           {/* Download */}
-          <button onClick={() => { hapticMedium(); handleDownload(); }} disabled={downloading} aria-label="Download"
+          <button onClick={(e) => { hapticMedium(); handleDownload(e); }} disabled={downloading} aria-label="Download"
             className="h-9 w-9 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-sm disabled:opacity-50">
             <Download className="h-4 w-4 text-white" aria-hidden="true" />
           </button>

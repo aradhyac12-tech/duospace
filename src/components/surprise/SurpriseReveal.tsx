@@ -1,5 +1,5 @@
 import { lazy, Suspense, useMemo, useRef, useState } from "react";
-import { motion, AnimatePresence, useMotionValue, useTransform, useSpring } from "framer-motion";
+import { motion, AnimatePresence, useMotionValue, useTransform, useSpring, type Variants } from "framer-motion";
 import { Maximize2, X } from "lucide-react";
 import CodeSurpriseFrame from "@/components/CodeSurpriseFrame";
 import { buildSurpriseDocument } from "@/lib/codeSurprises";
@@ -67,14 +67,14 @@ const SurpriseReveal = ({ surprise, visible, onClose }: SurpriseRevealProps) => 
     hidden: { opacity: 0 },
     show: { opacity: 1, transition: { staggerChildren: 0.22, delayChildren: 0.05 } },
   };
-  const growUp = {
+  const growUp: Variants = {
     hidden: { opacity: 0, y: 26, scale: 0.86, filter: "blur(10px)" },
     show: {
       opacity: 1,
       y: 0,
       scale: 1,
       filter: "blur(0px)",
-      transition: { duration: 1.1, ease: [0.16, 1, 0.3, 1] },
+      transition: { duration: 1.1, ease: [0.16, 1, 0.3, 1] as const },
     },
   };
 

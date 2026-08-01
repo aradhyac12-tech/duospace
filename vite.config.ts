@@ -18,7 +18,13 @@ export default defineConfig(({ mode }) => ({
   },
   plugins: [react()],
   resolve: {
-    alias: { "@": path.resolve(__dirname, "./src") },
+    alias: {
+      "@": path.resolve(__dirname, "./src"),
+      // Local Capacitor plugins are TS-only sources (no prebuilt dist) — point
+      // both the bundler and tsc at their entry files.
+      "duospace-audio-route": path.resolve(__dirname, "./native-plugins/audio-route/src/index.ts"),
+      "duospace-device-status": path.resolve(__dirname, "./native-plugins/device-status/src/index.ts"),
+    },
     // Force a single React copy — prevents "Cannot read properties of null (reading 'useState')"
     // when a dep (e.g. framer-motion / next-themes) gets pre-bundled with its own React resolution.
     dedupe: ["react", "react-dom", "react/jsx-runtime"],

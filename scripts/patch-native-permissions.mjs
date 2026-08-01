@@ -82,6 +82,21 @@ const ANDROID_PERMISSIONS = [
   "android.permission.WAKE_LOCK",
   "android.permission.FOREGROUND_SERVICE",
   "android.permission.FOREGROUND_SERVICE_PHONE_CALL", // Android 14+ foreground service type grant
+  // --- Media / photo library (Android 13+ granular replacements for
+  //     READ_EXTERNAL_STORAGE; the legacy ones below are sdk-capped) ---
+  "android.permission.READ_MEDIA_IMAGES",
+  "android.permission.READ_MEDIA_VIDEO",
+  "android.permission.READ_MEDIA_VISUAL_USER_SELECTED", // Android 14 partial photo access
+];
+
+/**
+ * Legacy storage permissions, only meaningful up to Android 12 — declared
+ * with a maxSdkVersion so Play Console doesn't flag them and Android 13+
+ * devices use the granular READ_MEDIA_* permissions above instead.
+ */
+const ANDROID_LEGACY_STORAGE = [
+  ["android.permission.READ_EXTERNAL_STORAGE", "32"],
+  ["android.permission.WRITE_EXTERNAL_STORAGE", "29"],
 ];
 
 const APP_PACKAGE = "com.duospace.app";
@@ -168,6 +183,15 @@ function patchAndroidManifest() {
     manifest = manifest.slice(0, manifestOpenTagEnd) + "\n" + entry + manifest.slice(manifestOpenTagEnd);
     changed = true;
     console.log(`[patch-native-permissions] Android: added ${perm}`);
+  }
+
+  for (const [perm, maxSdk] of ANDROID_LEGACY_STORAGE) {
+    if (manifest.includes(`android:name="${perm}"`)) continue;
+    const entry = `    <uses-permission android:name="${perm}" android:maxSdkVersion="${maxSdk}" />\n`;
+    const manifestOpenTagEnd = manifest.indexOf(">", manifest.indexOf("<manifest")) + 1;
+    manifest = manifest.slice(0, manifestOpenTagEnd) + "\n" + entry + manifest.slice(manifestOpenTagEnd);
+    changed = true;
+    console.log(`[patch-native-permissions] Android: added ${perm} (maxSdkVersion=${maxSdk})`);
   }
 
   // CRITICAL — Android OAuth deep-link fix (duospace://auth):

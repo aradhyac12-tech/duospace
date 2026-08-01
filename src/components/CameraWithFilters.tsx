@@ -176,8 +176,12 @@ const CameraWithFilters = ({ onClose, onCapture }: CameraWithFiltersProps) => {
         <div className="text-center space-y-4 px-8">
           <Sparkles className="h-12 w-12 text-white/40 mx-auto" />
           <p className="text-white text-sm">{cameraError}</p>
-          <button onClick={() => { hapticLight(); onClose(); }} className="bg-white/20 text-white px-6 py-2.5 rounded-xl text-sm">Close</button>
+          <div className="flex items-center justify-center gap-2">
+            <button onClick={() => { hapticLight(); startCamera(facingMode); }} className="bg-white/20 text-white px-6 py-2.5 rounded-xl text-sm">Retry</button>
+            <button onClick={() => { hapticLight(); onClose(); }} className="bg-white/10 text-white px-6 py-2.5 rounded-xl text-sm">Close</button>
+          </div>
         </div>
+        {permissionSheet}
       </div>
     );
   }

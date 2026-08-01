@@ -34,6 +34,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useE2E } from "@/hooks/useE2E";
 import storage from "@/lib/storage";
 import { useDailyCall } from "@/hooks/useDailyCall";
+import { useMediaPermission } from "@/components/PermissionDeniedSheet";
 import { useToast } from "@/hooks/use-toast";
 import { invokeEdgeFunction } from "@/lib/edgeFunction";
 import { extractErrorMessage } from "@/lib/errorMessage";
@@ -441,6 +442,7 @@ const Chat = () => {
   const typingTimeoutRef  = useRef<ReturnType<typeof setTimeout>|null>(null);
   const lastTypingRef     = useRef<number>(0);
   const presenceChannelRef = useRef<ReturnType<typeof supabase.channel>|null>(null);
+  const { ensure: ensureMedia, permissionSheet } = useMediaPermission();
   const fileInputRef    = useRef<HTMLInputElement>(null);
   const imageInputRef   = useRef<HTMLInputElement>(null);
   const cameraInputRef  = useRef<HTMLInputElement>(null);
@@ -1564,9 +1566,9 @@ const Chat = () => {
             transition={{ type: "spring", stiffness: 380, damping: 28 }}
             className="mx-4 mb-2 bg-card/90 backdrop-blur-md border border-border/20 rounded-2xl p-3 flex gap-3">
             {[
-              { label: "Photo",  icon: ImageIcon, onClick: () => imageInputRef.current?.click() },
-              { label: "Camera", icon: Camera,    onClick: () => cameraInputRef.current?.click() },
-              { label: "File",   icon: FileText,  onClick: () => fileInputRef.current?.click() },
+              { label: "Photo",  icon: ImageIcon, onClick: async () => { if (await ensureMedia("photos", () => imageInputRef.current?.click())) imageInputRef.current?.click(); } },
+              { label: "Camera", icon: Camera,    onClick: async () => { if (await ensureMedia("camera", () => cameraInputRef.current?.click())) cameraInputRef.current?.click(); } },
+              { label: "File",   icon: FileText,  onClick: async () => { if (await ensureMedia("files", () => fileInputRef.current?.click())) fileInputRef.current?.click(); } },
             ].map(({ label, icon: Icon, onClick }) => (
               <button key={label} onClick={() => { hapticLight(); onClick(); }} className="flex flex-col items-center gap-1.5 flex-1 active:scale-95 transition-transform group">
                 <span className="h-11 w-11 rounded-full flex items-center justify-center bg-muted group-hover:bg-accent/15 transition-colors">
@@ -1696,6 +1698,7 @@ const Chat = () => {
       <input ref={imageInputRef} type="file" accept="image/*,video/*" className="hidden" onChange={e=>handleFileSelect(e,"image")} />
       <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={e=>handleFileSelect(e,"image")} />
       <input ref={fileInputRef} type="file" className="hidden" onChange={e=>handleFileSelect(e,"file")} />
+      {permissionSheet}
 
       {/* Disappearing timer sheet */}
       <Sheet open={showDisappearSheet} onOpenChange={setShowDisappearSheet}>

@@ -6,6 +6,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { resolveSignedUrl, resolveSignedUrls } from "@/lib/signedStorageUrl";
 import { useAuth } from "@/hooks/useAuth";
+import { useMediaPermission } from "@/components/PermissionDeniedSheet";
 import { useToast } from "@/hooks/use-toast";
 import { Switch } from "@/components/ui/switch";
 import CameraWithFilters from "@/components/CameraWithFilters";
@@ -211,6 +212,7 @@ const Gallery = () => {
   const [viewItemIsOwner, setViewItemIsOwner] = useState(true);
   const [showCamera, setShowCamera] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const { ensure: ensureMedia, permissionSheet } = useMediaPermission();
 
   // Load media visibility from localStorage
   useEffect(() => {
@@ -541,7 +543,7 @@ const Gallery = () => {
             <Camera className="h-4 w-4 text-primary-foreground" aria-hidden="true" />
           </button>
           <button
-            onClick={() => { hapticLight(); fileRef.current?.click(); }}
+            onClick={async () => { hapticLight(); if (await ensureMedia("photos", () => fileRef.current?.click())) fileRef.current?.click(); }}
             disabled={uploading}
             aria-label={uploading ? `Uploading, ${uploadProgress} percent` : "Upload photo"}
             className="h-9 w-9 rounded-xl bg-accent flex items-center justify-center disabled:opacity-50"
@@ -676,6 +678,7 @@ const Gallery = () => {
         className="hidden"
         onChange={uploadFile}
       />
+      {permissionSheet}
     </motion.div>
   );
 };

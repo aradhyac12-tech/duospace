@@ -14,6 +14,8 @@ export interface FontPreset {
 }
 
 export const FONT_PRESETS: FontPreset[] = [
+  { id: "space-inter",      name: "Space Grotesk · Inter",       heading: "'Space Grotesk', sans-serif", body: "'Inter', sans-serif",
+    gfHeading: "Space+Grotesk:wght@300..700", gfBody: "Inter:wght@300..900", category: "sans" },
   { id: "instrument-dm",    name: "Instrument Serif · DM Sans",  heading: "'Instrument Serif', serif", body: "'DM Sans', sans-serif",
     gfHeading: "Instrument+Serif:ital@0;1", gfBody: "DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000", category: "serif" },
   { id: "fraunces-inter",   name: "Fraunces · Inter",            heading: "'Fraunces', serif", body: "'Inter', sans-serif",
@@ -32,8 +34,6 @@ export const FONT_PRESETS: FontPreset[] = [
     gfHeading: "Sora:wght@200..800", gfBody: "Manrope:wght@200..800", category: "sans" },
   { id: "outfit-figtree",   name: "Outfit · Figtree",            heading: "'Outfit', sans-serif", body: "'Figtree', sans-serif",
     gfHeading: "Outfit:wght@200..900", gfBody: "Figtree:wght@300..900", category: "sans" },
-  { id: "space-inter",      name: "Space Grotesk · Inter",       heading: "'Space Grotesk', sans-serif", body: "'Inter', sans-serif",
-    gfHeading: "Space+Grotesk:wght@300..700", gfBody: "Inter:wght@300..900", category: "sans" },
   { id: "bricolage-inter",  name: "Bricolage · Inter",           heading: "'Bricolage Grotesque', sans-serif", body: "'Inter', sans-serif",
     gfHeading: "Bricolage+Grotesque:opsz,wght@12..96,200..800", gfBody: "Inter:wght@300..900", category: "display" },
   { id: "urbanist-epilogue",name: "Urbanist · Epilogue",         heading: "'Urbanist', sans-serif", body: "'Epilogue', sans-serif",

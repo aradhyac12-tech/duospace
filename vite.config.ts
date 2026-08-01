@@ -2,21 +2,19 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
 
-// Correct project credentials (matches .env / Supabase project povhwwcswvfihmcdqgyv).
-// Previous fallback had a corrupted JWT (wrong ref + "Hsupabase" issuer) which
-// caused "Invalid API key" errors whenever VITE_ env vars weren't injected.
-const LOVABLE_CLOUD_URL = "https://povhwwcswvfihmcdqgyv.supabase.co";
-const LOVABLE_CLOUD_PUBLISHABLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBvdmh3d2Nzd3ZmaWhtY2RxZ3l2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg0NzgwMTQsImV4cCI6MjA5NDA1NDAxNH0.UzPse5kgQBH3lDcDFj97qX4nc483wUnKBCu7J6-oz18";
+// Supabase credentials (project jzlpelxwzjjpddqcrtpu) are supplied via
+// VITE_SUPABASE_URL / VITE_SUPABASE_PUBLISHABLE_KEY and read directly with
+// import.meta.env in src/integrations/supabase/client.ts — Vite exposes
+// VITE_-prefixed env vars to client code natively, so no custom `define` or
+// hardcoded fallback is needed here. Set these in .env.local for local dev
+// (see .env.example) and as Cloudflare Pages build environment variables
+// for production.
 
 export default defineConfig(({ mode }) => ({
   server: {
     host: "::",
     port: 8080,
     hmr: { overlay: false },
-  },
-  define: {
-    "process.env.SUPABASE_URL": JSON.stringify(process.env.SUPABASE_URL ?? LOVABLE_CLOUD_URL),
-    "process.env.SUPABASE_PUBLISHABLE_KEY": JSON.stringify(process.env.SUPABASE_PUBLISHABLE_KEY ?? LOVABLE_CLOUD_PUBLISHABLE_KEY),
   },
   plugins: [react()],
   resolve: {

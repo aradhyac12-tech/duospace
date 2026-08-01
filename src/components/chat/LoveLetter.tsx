@@ -4,6 +4,7 @@ import { Feather, X, Send, Heart } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { hapticLight, hapticSelection } from "@/lib/haptics";
 
 interface LoveLetterProps {
   onSend: (subject: string, body: string) => void;
@@ -39,7 +40,7 @@ const LoveLetter = ({ onSend, onClose, partnerName }: LoveLetterProps) => {
       animate={{ opacity: 1, scale: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.95, y: 20 }}
       className="fixed inset-0 z-50 flex items-end justify-center p-4 bg-black/40 backdrop-blur-sm"
-      onClick={(e) => e.target === e.currentTarget && onClose()}
+      onClick={(e) => { if (e.target === e.currentTarget) { hapticLight(); onClose(); } }}
     >
       <motion.div
         initial={{ y: 40 }}
@@ -58,12 +59,12 @@ const LoveLetter = ({ onSend, onClose, partnerName }: LoveLetterProps) => {
               {LETTER_THEMES.map((t) => (
                 <button
                   key={t.id}
-                  onClick={() => setTheme(t)}
+                  onClick={() => { hapticSelection(); setTheme(t); }}
                   className={`h-5 w-5 rounded-full border-2 transition-transform ${t.bg} ${theme.id === t.id ? `${t.border} scale-125` : "border-transparent"}`}
                 />
               ))}
             </div>
-            <button onClick={onClose} className="h-7 w-7 flex items-center justify-center opacity-40 hover:opacity-70">
+            <button onClick={() => { hapticLight(); onClose(); }} className="h-7 w-7 flex items-center justify-center opacity-40 hover:opacity-70">
               <X className="h-4 w-4" />
             </button>
           </div>
@@ -105,9 +106,9 @@ const LoveLetter = ({ onSend, onClose, partnerName }: LoveLetterProps) => {
             {wordCount > 10 && <Heart className={`h-3 w-3 ${theme.accent} opacity-60`} />}
           </div>
           <Button
-            onClick={handleSend}
+            onClick={() => { handleSend(); }}
             disabled={!body.trim() || sending}
-            className={`rounded-xl gap-2 ${theme.id === "midnight" ? "bg-white text-gray-900 hover:bg-white/90" : "bg-foreground text-background"}`}
+            className={`rounded-xl gap-2 ${theme.id === "midnight" ? "bg-white text-gray-900 hover:bg-white/90" : "bg-primary text-primary-foreground"}`}
           >
             {sending ? (
               <span className="text-sm">Sending…</span>

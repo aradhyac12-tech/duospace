@@ -24,6 +24,14 @@ interface QRSignInScannerProps {
    * downstream (partner link, etc). No session is issued in this branch.
    */
   onSignupInvite?: (inviterId: string) => void;
+  /**
+   * Called when the scanned QR was an anon_signup (the QR belongs to a
+   * partner who hasn't finished creating their account yet — issued by
+   * qr-anon-issue). Scanning it while already signed in marks you as their
+   * pending partner server-side; no session changes on this device. Used by
+   * "Scan partner's QR" in Settings.
+   */
+  onPartnerLinked?: () => void;
 }
 
 interface QRPayload {
@@ -33,7 +41,7 @@ interface QRPayload {
   exp: string;
 }
 
-const QRSignInScanner = ({ onClose, onSuccess, onSignupInvite }: QRSignInScannerProps) => {
+const QRSignInScanner = ({ onClose, onSuccess, onSignupInvite, onPartnerLinked }: QRSignInScannerProps) => {
   const reactId = useId().replace(/:/g, "");
   const scannerId = `duo-qr-scanner-${reactId}`;
   const scannerRef = useRef<Html5Qrcode | null>(null);
@@ -201,6 +209,18 @@ const QRSignInScanner = ({ onClose, onSuccess, onSignupInvite }: QRSignInScanner
         logInfo("auth.qr", "redeem signup_invite", { request_id: traceId, status: "ok" }, traceId);
         toast({ title: "Create your account", description: "Finish signup on this device." });
         onSignupInvite?.(String(data.inviter_id ?? ""));
+        return;
+      }
+
+      // BUG FIX: anon_signup was falling through to the access_token check
+      // below and throwing "Invalid response" — this kind never mints a
+      // session (the QR belongs to a partner who hasn't signed up yet), so
+      // scanning a partner's QR from Settings always failed with a
+      // confusing error even though the camera and decode worked fine.
+      if (data?.kind === "anon_signup") {
+        logInfo("auth.qr", "redeem anon_signup", { request_id: traceId, status: "ok" }, traceId);
+        toast({ title: "Linked ✓", description: "They'll be your partner as soon as they finish signing up." });
+        onPartnerLinked?.();
         return;
       }
 

@@ -158,9 +158,9 @@ const Shayari = () => {
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.15 }} className="flex-1 min-h-0 overflow-y-auto overscroll-contain pb-24" style={{ WebkitOverflowScrolling: "touch" as any }}>
       <PageHeader title="Shayari" subtitle="Words from the heart">
-        <button onClick={() => { hapticLight(); setShowAddDialog(true); }}
+        <button onClick={() => { hapticLight(); setShowAddDialog(true); }} aria-label="Add shayari"
           className="h-9 w-9 rounded-xl bg-accent flex items-center justify-center">
-          <Plus className="h-5 w-5 text-foreground" />
+          <Plus className="h-5 w-5 text-accent-foreground" aria-hidden="true" />
         </button>
       </PageHeader>
 
@@ -171,8 +171,8 @@ const Shayari = () => {
           <Input value={search} onChange={(e) => setSearch(e.target.value)}
             placeholder="Search shayaris..." className="pl-9 h-9 rounded-xl bg-card text-sm" />
           {search && (
-            <button onClick={() => setSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2">
-              <X className="h-3.5 w-3.5 text-muted-foreground" />
+            <button onClick={() => setSearch("")} aria-label="Clear search" className="absolute right-3 top-1/2 -translate-y-1/2">
+              <X className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
             </button>
           )}
         </div>
@@ -190,7 +190,7 @@ const Shayari = () => {
         {filtered.length === 0 ? (
           <div className="text-center py-16 space-y-3">
             <div className="h-16 w-16 rounded-2xl bg-accent flex items-center justify-center mx-auto">
-              <BookOpen className="h-8 w-8 text-muted-foreground" />
+              <BookOpen className="h-8 w-8 text-accent-foreground/70" />
             </div>
             <p className="text-sm text-muted-foreground">
               {tab === "favorites" ? "No favorites yet" : search ? "No matches" : "No shayaris yet. Write your first!"}
@@ -237,14 +237,14 @@ const Shayari = () => {
                       )}
                       <span className="text-[11px] text-muted-foreground">{author?.name || "Unknown"} · {formatDate(shayari.created_at)}</span>
                     </div>
-                    <div className="flex gap-1">
-                      <button onClick={() => toggleFavorite(shayari)}
-                        className="h-7 w-7 rounded-lg flex items-center justify-center transition-colors">
-                        <Heart className={`h-3.5 w-3.5 ${shayari.is_favorite ? "fill-primary text-primary" : "text-muted-foreground"}`} />
+                    <div className="flex gap-1.5">
+                      <button onClick={() => { hapticLight(); toggleFavorite(shayari); }} aria-label={shayari.is_favorite ? "Remove from favorites" : "Add to favorites"}
+                        className="h-9 w-9 rounded-lg flex items-center justify-center transition-all duration-150 active:scale-90">
+                        <Heart className={`h-3.5 w-3.5 ${shayari.is_favorite ? "fill-primary text-primary" : "text-muted-foreground"}`} aria-hidden="true" />
                       </button>
-                      <button onClick={() => setShowDeleteConfirm(shayari.id)}
-                        className="h-7 w-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-destructive transition-colors">
-                        <Trash2 className="h-3.5 w-3.5" />
+                      <button onClick={() => { hapticLight(); setShowDeleteConfirm(shayari.id); }} aria-label="Delete shayari"
+                        className="h-9 w-9 rounded-lg flex items-center justify-center text-muted-foreground hover:text-destructive transition-all duration-150 active:scale-90">
+                        <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
                       </button>
                     </div>
                   </div>
@@ -274,7 +274,7 @@ const Shayari = () => {
             </div>
           </div>
           <DialogFooter>
-            <Button onClick={addShayari} disabled={!newShayari.content.trim()} className="rounded-xl bg-foreground text-background w-full">
+            <Button onClick={addShayari} disabled={!newShayari.content.trim()} className="rounded-xl bg-primary text-primary-foreground w-full">
               Add Shayari
             </Button>
           </DialogFooter>

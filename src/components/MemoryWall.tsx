@@ -2,9 +2,11 @@ import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, X, ImageIcon, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { resolveSignedUrl, resolveSignedUrls } from "@/lib/signedStorageUrl";
 import { useAuth } from "@/hooks/useAuth";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { hapticLight, hapticMedium, hapticWarning } from "@/lib/haptics";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
@@ -39,7 +41,7 @@ const MemoryWall = ({ partnerId }: MemoryWallProps) => {
       .from("memories").select("id,creator_id,image_url,caption,created_at")
       .in("creator_id", creatorIds)
       .order("created_at", { ascending: false }).limit(50);
-    if (data) setMemories(data);
+    if (data) setMemories(await resolveSignedUrls("memories", data as Memory[], "image_url"));
   };
 
   useEffect(() => { load(); }, [user, partnerId]);
@@ -54,7 +56,9 @@ const MemoryWall = ({ partnerId }: MemoryWallProps) => {
           const m = payload.new as Memory;
           const ids = partnerId ? [user.id, partnerId] : [user.id];
           if (ids.includes(m.creator_id)) {
-            setMemories(prev => [m, ...prev]);
+            resolveSignedUrl("memories", m.image_url ?? "").then((signedUrl) => {
+              setMemories(prev => [{ ...m, image_url: m.image_url ? signedUrl : m.image_url }, ...prev]);
+            });
           }
         } else if (payload.eventType === "DELETE") {
           setMemories(prev => prev.filter(m => m.id !== (payload.old as any).id));
@@ -88,7 +92,13 @@ const MemoryWall = ({ partnerId }: MemoryWallProps) => {
     const { data } = await supabase.from("memories")
       .insert({ creator_id: user.id, caption: caption || null, image_url: imageUrl })
       .select().single();
-    if (data) setMemories(prev => [data as Memory, ...prev]);
+    if (data) {
+      const created = data as Memory;
+      const displayItem = created.image_url
+        ? { ...created, image_url: await resolveSignedUrl("memories", created.image_url) }
+        : created;
+      setMemories(prev => [displayItem, ...prev]);
+    }
     setCaption(""); setSelectedImage(null); setPreview(null);
     setShowAdd(false); setUploading(false);
   };
@@ -103,9 +113,9 @@ const MemoryWall = ({ partnerId }: MemoryWallProps) => {
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <p className="text-sm font-semibold text-foreground">Memory Wall</p>
-        <button onClick={() => setShowAdd(true)}
-          className="h-7 w-7 rounded-full bg-accent flex items-center justify-center active:scale-95 transition-transform">
-          <Plus className="h-3.5 w-3.5 text-foreground" />
+        <button onClick={() => { hapticLight(); setShowAdd(true); }} aria-label="Add memory"
+          className="h-9 w-9 rounded-full bg-accent flex items-center justify-center active:scale-95 transition-transform">
+          <Plus className="h-4 w-4 text-accent-foreground" aria-hidden="true" />
         </button>
       </div>
 
@@ -117,7 +127,7 @@ const MemoryWall = ({ partnerId }: MemoryWallProps) => {
       ) : (
         <div className="grid grid-cols-3 gap-1.5">
           {memories.map((m) => (
-            <button key={m.id} onClick={() => setViewMemory(m)}
+            <button key={m.id} onClick={() => { hapticLight(); setViewMemory(m); }}
               className="aspect-square rounded-xl overflow-hidden bg-muted relative active:scale-95 transition-transform">
               {m.image_url ? (
                 <img src={m.image_url} alt={m.caption || ""} className="w-full h-full object-cover" />
@@ -139,14 +149,14 @@ const MemoryWall = ({ partnerId }: MemoryWallProps) => {
             {preview ? (
               <div className="relative">
                 <img src={preview} alt="" className="w-full rounded-xl object-cover max-h-48" />
-                <button onClick={() => { setSelectedImage(null); setPreview(null); }}
+                <button onClick={() => { hapticLight(); setSelectedImage(null); setPreview(null); }} aria-label="Remove selected photo"
                   className="absolute top-2 right-2 h-6 w-6 bg-background/80 rounded-full flex items-center justify-center">
-                  <X className="h-3 w-3" />
+                  <X className="h-3 w-3" aria-hidden="true" />
                 </button>
               </div>
             ) : (
-              <button onClick={() => fileRef.current?.click()}
-                className="w-full h-24 rounded-xl border-2 border-dashed border-border flex flex-col items-center justify-center gap-1 text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors">
+              <button onClick={() => { hapticLight(); fileRef.current?.click(); }}
+                className="w-full h-24 rounded-xl border-2 border-dashed border-border flex flex-col items-center justify-center gap-1 text-muted-foreground hover:text-accent hover:border-accent/40 transition-colors">
                 <ImageIcon className="h-5 w-5" />
                 <span className="text-xs">Add photo</span>
               </button>
@@ -156,8 +166,8 @@ const MemoryWall = ({ partnerId }: MemoryWallProps) => {
             <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleImageChange} />
           </div>
           <DialogFooter>
-            <Button onClick={addMemory} disabled={uploading || (!selectedImage && !caption.trim())}
-              className="w-full rounded-full bg-foreground text-background h-9 text-sm">
+            <Button onClick={() => { hapticMedium(); addMemory(); }} disabled={uploading || (!selectedImage && !caption.trim())}
+              className="w-full rounded-full bg-primary text-primary-foreground h-9 text-sm">
               {uploading ? "Saving..." : "Save Memory"}
             </Button>
           </DialogFooter>
@@ -178,7 +188,7 @@ const MemoryWall = ({ partnerId }: MemoryWallProps) => {
                   {new Date(viewMemory.created_at).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" })}
                 </p>
                 {viewMemory.creator_id === user?.id && (
-                  <button onClick={() => deleteMemory(viewMemory.id)}
+                  <button onClick={() => { hapticWarning(); deleteMemory(viewMemory.id); }}
                     className="flex items-center gap-1.5 text-destructive text-xs">
                     <Trash2 className="h-3.5 w-3.5" /> Delete memory
                   </button>

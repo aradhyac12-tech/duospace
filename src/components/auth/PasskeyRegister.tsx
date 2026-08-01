@@ -68,7 +68,7 @@ const PasskeyRegister = ({ onDone }: { onDone?: () => void }) => {
           className="h-10 rounded-xl bg-card border-border" placeholder="iPhone" />
       </div>
       <Button onClick={handle} disabled={loading}
-        className="w-full h-11 rounded-xl bg-foreground text-background hover:bg-foreground/90 gap-2">
+        className="w-full h-11 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 gap-2">
         {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Fingerprint className="h-4 w-4" />}
         Add passkey to this device
       </Button>

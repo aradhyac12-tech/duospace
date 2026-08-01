@@ -116,7 +116,7 @@ const GroicFullPlayer = () => {
                 <SkipBack className="h-5 w-5" />
               </button>
               <button onClick={() => { hapticMedium(); toggle(); }}
-                className="h-16 w-16 rounded-full bg-foreground text-background flex items-center justify-center shadow-xl active:scale-95"
+                className="h-16 w-16 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-xl active:scale-95"
                 aria-label={isPlaying ? "Pause" : "Play"}>
                 {isPlaying ? <Pause className="h-7 w-7" /> : <Play className="h-7 w-7 ml-1" />}
               </button>

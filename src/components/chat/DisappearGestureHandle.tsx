@@ -34,24 +34,13 @@ const ENGAGE_PX      = 6;    // filter accidental taps
 
 const DisappearGestureHandle = ({ active, currentMs, onCommit, onOpenPicker }: Props) => {
   const [pull, setPull] = useState(0);          // 0 … MAX_PULL — drives visuals
-  const [holdProgress, setHoldProgress] = useState(0); // 0..1 while long-pressing
   const dragging        = useRef(false);
   const startY          = useRef(0);
   const engaged         = useRef(false);
   const committed       = useRef(false);
-  const holdTimer       = useRef<number | null>(null);
-  const holdRaf         = useRef<number | null>(null);
-  const holdStart       = useRef(0);
-  const HOLD_MS         = 3000;
 
   const progress = Math.min(pull / PULL_THRESHOLD, 1);
   const willCommit = pull >= PULL_THRESHOLD;
-
-  const clearHold = useCallback(() => {
-    if (holdTimer.current) { clearTimeout(holdTimer.current); holdTimer.current = null; }
-    if (holdRaf.current) { cancelAnimationFrame(holdRaf.current); holdRaf.current = null; }
-    setHoldProgress(0);
-  }, []);
 
   const reset = useCallback(() => {
     dragging.current = false;
@@ -59,48 +48,29 @@ const DisappearGestureHandle = ({ active, currentMs, onCommit, onOpenPicker }: P
     committed.current = false;
     startY.current = 0;
     setPull(0);
-    clearHold();
-  }, [clearHold]);
-
-  const beginHold = useCallback(() => {
-    holdStart.current = performance.now();
-    const tick = () => {
-      const p = Math.min(1, (performance.now() - holdStart.current) / HOLD_MS);
-      setHoldProgress(p);
-      if (p < 1) holdRaf.current = requestAnimationFrame(tick);
-    };
-    holdRaf.current = requestAnimationFrame(tick);
-    holdTimer.current = window.setTimeout(() => {
-      if (!committed.current) {
-        committed.current = true;
-        hapticMedium();
-        onCommit(active ? 0 : currentMs);
-      }
-      clearHold();
-    }, HOLD_MS);
-  }, [active, currentMs, onCommit, clearHold]);
+  }, []);
 
   const onPointerDown = useCallback((e: React.PointerEvent) => {
+    // Ignore multi-touch and non-primary buttons.
     if (e.button && e.button !== 0) return;
     dragging.current = true;
     engaged.current = false;
     committed.current = false;
     startY.current = e.clientY;
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
-    beginHold();
-  }, [beginHold]);
+  }, []);
 
   const onPointerMove = useCallback((e: React.PointerEvent) => {
     if (!dragging.current) return;
     const dy = startY.current - e.clientY;
     if (dy < ENGAGE_PX) { if (pull !== 0) setPull(0); return; }
-    if (!engaged.current) { engaged.current = true; hapticLight(); clearHold(); }
+    if (!engaged.current) { engaged.current = true; hapticLight(); }
     const next = Math.min(MAX_PULL, dy - ENGAGE_PX);
     const crossedNow = next >= PULL_THRESHOLD;
     const crossedBefore = pull >= PULL_THRESHOLD;
     if (crossedNow && !crossedBefore) hapticMedium();
     setPull(next);
-  }, [pull, clearHold]);
+  }, [pull]);
 
   const finish = useCallback(() => {
     if (!dragging.current) return;
@@ -113,6 +83,8 @@ const DisappearGestureHandle = ({ active, currentMs, onCommit, onOpenPicker }: P
     reset();
   }, [pull, active, currentMs, onCommit, reset]);
 
+  // Safety: if the pointer stream is interrupted (e.g. context menu, native
+  // gesture), always snap back.
   useEffect(() => {
     const cancel = () => reset();
     window.addEventListener("pointercancel", cancel);
@@ -124,15 +96,30 @@ const DisappearGestureHandle = ({ active, currentMs, onCommit, onOpenPicker }: P
   }, [reset]);
 
   const onPillTap = () => {
+    // Only treat as tap if there was no engaged drag.
     if (engaged.current) return;
     if (active && onOpenPicker) onOpenPicker();
   };
 
-
   return (
     <>
-      {/* Gesture pill — the chat root swaps to a dark theme via [data-vanish],
-          so we don't need a black overlay anymore. */}
+      {/* Full-viewport dim overlay driven by the drag. Instagram darkens the
+          whole screen as vanish mode engages — we do the same with a purely
+          opacity-driven layer that sits above the chat but below the composer. */}
+      <AnimatePresence>
+        {(pull > 0 || active) && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: active ? 0.55 : progress * 0.6 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15, ease: "easeOut" }}
+            className="pointer-events-none fixed inset-0 z-30 bg-black"
+            aria-hidden="true"
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Gesture pill */}
       <div className="relative flex items-center justify-center py-1 select-none z-40">
         <motion.button
           type="button"
@@ -140,32 +127,19 @@ const DisappearGestureHandle = ({ active, currentMs, onCommit, onOpenPicker }: P
           onPointerMove={onPointerMove}
           onPointerUp={finish}
           onClick={onPillTap}
-          aria-label={active ? "Vanish mode on — pull up or hold 3s to turn off, tap to change timer" : "Pull up or hold 3s to turn on vanish mode"}
-          animate={{ y: -pull * 0.35, scale: 1 + progress * 0.15 + holdProgress * 0.1 }}
+          aria-label={active ? "Vanish mode on — pull up to turn off, tap to change timer" : "Pull up to turn on vanish mode"}
+          animate={{ y: -pull * 0.35, scale: 1 + progress * 0.15 }}
           transition={ dragging.current
-            ? { type: "tween", duration: 0 }
-            : { type: "spring", stiffness: 520, damping: 32 }
+            ? { type: "tween", duration: 0 }              // 1:1 with the finger while dragging
+            : { type: "spring", stiffness: 520, damping: 32 } // snappy release
           }
           style={{ touchAction: "none" }}
-          className={`relative flex items-center gap-1.5 px-3 py-1.5 rounded-full transition-colors ${
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full transition-colors ${
             active || willCommit
               ? "bg-primary/15"
               : "bg-transparent"
           }`}
         >
-          {/* Long-press progress ring */}
-          {holdProgress > 0 && holdProgress < 1 && (
-            <span
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-0 rounded-full"
-              style={{
-                background: `conic-gradient(hsl(var(--primary)) ${holdProgress * 360}deg, transparent 0deg)`,
-                WebkitMask: "radial-gradient(circle, transparent 62%, black 64%)",
-                mask: "radial-gradient(circle, transparent 62%, black 64%)",
-                opacity: 0.9,
-              }}
-            />
-          )}
           <motion.span
             animate={{
               width: willCommit || active ? 28 : 36,
@@ -184,18 +158,28 @@ const DisappearGestureHandle = ({ active, currentMs, onCommit, onOpenPicker }: P
           )}
         </motion.button>
 
+        {/* Hint text while dragging */}
         <AnimatePresence>
-          {(pull > 0 || holdProgress > 0.05) && (
+          {pull > 0 && !active && (
             <motion.span
-              key="hint"
+              key="hint-on"
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 6 }}
-              className="pointer-events-none absolute -top-6 text-[10px] font-medium text-foreground/80"
+              className="pointer-events-none absolute -top-6 text-[10px] font-medium text-white/90"
             >
-              {active
-                ? (willCommit ? "Release to turn off" : holdProgress > 0.05 ? "Hold to turn off…" : "Keep pulling…")
-                : (willCommit ? "Release to turn on" : holdProgress > 0.05 ? "Hold to turn on…" : "Keep pulling…")}
+              {willCommit ? "Release to turn on" : "Keep pulling…"}
+            </motion.span>
+          )}
+          {pull > 0 && active && (
+            <motion.span
+              key="hint-off"
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 6 }}
+              className="pointer-events-none absolute -top-6 text-[10px] font-medium text-white/90"
+            >
+              {willCommit ? "Release to turn off" : "Keep pulling…"}
             </motion.span>
           )}
         </AnimatePresence>
@@ -205,4 +189,3 @@ const DisappearGestureHandle = ({ active, currentMs, onCommit, onOpenPicker }: P
 };
 
 export default DisappearGestureHandle;
-

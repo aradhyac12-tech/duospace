@@ -47,6 +47,7 @@ interface GroicState {
   expanded: boolean;       // full-player open
   sessionRole: Role;
   partnerListening: boolean;
+  partnerInviteActive: boolean; // partner is hosting a session, not yet joined
 }
 
 interface GroicAPI extends GroicState {
@@ -61,6 +62,8 @@ interface GroicAPI extends GroicState {
   expand: (v: boolean) => void;
   startSession: () => Promise<void>;
   endSession: () => Promise<void>;
+  joinPartnerSession: () => void;
+  dismissPartnerInvite: () => void;
 }
 
 const GroicContext = createContext<GroicAPI | null>(null);
@@ -85,15 +88,24 @@ export const GroicProvider = ({ children }: { children: ReactNode }) => {
   const [expanded, setExpanded]     = useState(false);
   const [sessionRole, setSessionRole] = useState<Role>("solo");
   const [partnerListening, setPartnerListening] = useState(false);
+  const [partnerInviteActive, setPartnerInviteActive] = useState(false);
   const [partnerId, setPartnerId]   = useState<string | null>(null);
 
   const playerRef    = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const channelRef   = useRef<any>(null);
+  const probeRef      = useRef<any>(null); // the "am I being invited" listener, kept so joinPartnerSession can tear it down
   const tickTimer    = useRef<number | null>(null);
   const positionPoll = useRef<number | null>(null);
   const muteHostBroadcast = useRef(false); // ignore self echo
   const pendingVideoRef = useRef<{ videoId: string; autoplay: boolean } | null>(null);
+  // Mirrors of state read inside stable callbacks (subscribeChannel) that
+  // shouldn't themselves depend on current/isPlaying — a dependency there
+  // would tear down and recreate the realtime channel on every tick.
+  const currentRef   = useRef<GroicTrack | null>(null);
+  const isPlayingRef = useRef(false);
+  useEffect(() => { currentRef.current = current; }, [current]);
+  useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
 
   // Resolve partner id once
   useEffect(() => {
@@ -298,7 +310,19 @@ export const GroicProvider = ({ children }: { children: ReactNode }) => {
       .on("broadcast", { event: "pause" }, ({ payload }) => role === "guest" && onGuestEvent("pause", payload))
       .on("broadcast", { event: "seek" },  ({ payload }) => role === "guest" && onGuestEvent("seek", payload))
       .on("broadcast", { event: "tick" },  ({ payload }) => role === "guest" && onGuestEvent("tick", payload))
-      .on("broadcast", { event: "join" },  () => setPartnerListening(true))
+      .on("broadcast", { event: "join" },  ({ payload }) => {
+        setPartnerListening(true);
+        // Instant-connect: a guest that just joined shouldn't wait up to
+        // TICK_MS for the next scheduled heartbeat to hear what's playing.
+        if (role === "host" && payload?.role === "guest") {
+          const track = currentRef.current;
+          if (track) {
+            ch.send({ type: "broadcast", event: "load", payload: { videoId: track.videoId, track, ts: Date.now() } });
+            const pos = playerRef.current?.getCurrentTime?.() || 0;
+            ch.send({ type: "broadcast", event: "tick", payload: { videoId: track.videoId, position: pos, isPlaying: isPlayingRef.current, ts: Date.now() } });
+          }
+        }
+      })
       .on("broadcast", { event: "leave" }, () => setPartnerListening(false))
       .subscribe((status) => {
         if (status === "SUBSCRIBED") {
@@ -307,6 +331,21 @@ export const GroicProvider = ({ children }: { children: ReactNode }) => {
       });
     channelRef.current = ch;
   }, [channelName, onGuestEvent]);
+
+  // Host: re-announce presence periodically, not just once on subscribe.
+  // Realtime broadcasts are fire-and-forget with no replay — a partner who
+  // opens/reloads Groic after the one-shot "join" already went out would
+  // otherwise never learn a session is active. This heartbeat is what lets
+  // a late-joining partner still sync up within a few seconds.
+  useEffect(() => {
+    if (sessionRole !== "host" || !channelRef.current) return;
+    const id = window.setInterval(() => {
+      try {
+        channelRef.current?.send({ type: "broadcast", event: "join", payload: { role: "host" } });
+      } catch { /* channel may be mid-teardown */ }
+    }, 4000);
+    return () => clearInterval(id);
+  }, [sessionRole]);
 
   const startSession = useCallback(async () => {
     if (!user || !partnerId) return;
@@ -322,32 +361,56 @@ export const GroicProvider = ({ children }: { children: ReactNode }) => {
     }
     setSessionRole("solo");
     setPartnerListening(false);
+    setPartnerInviteActive(false);
   }, []);
 
-  // Auto-listen for incoming sessions (act as guest if partner starts hosting).
+  // Auto-listen for incoming sessions: surface an invite rather than
+  // silently auto-joining, so the partner gets a "tap to join" prompt.
   useEffect(() => {
     if (!user || !partnerId || !channelName) return;
     if (sessionRole !== "solo") return;
+    let dismissed = false;
+    const announceInvite = () => {
+      if (dismissed) return;
+      setPartnerInviteActive(true);
+    };
     const probe = supabase.channel(channelName, { config: { broadcast: { self: false } } })
       .on("broadcast", { event: "join" }, ({ payload }) => {
-        if (payload?.role === "host") {
-          // Promote to guest
-          supabase.removeChannel(probe);
-          setSessionRole("guest");
-          subscribeChannel("guest");
-        }
+        if (payload?.role === "host") announceInvite();
       })
+      // A host is the only role that ever sends these — either one arriving
+      // is proof a session is live, even if we missed the "join" heartbeat.
+      .on("broadcast", { event: "tick" }, () => announceInvite())
+      .on("broadcast", { event: "load" }, () => announceInvite())
       .subscribe();
-    return () => { supabase.removeChannel(probe); };
-  }, [user, partnerId, channelName, sessionRole, subscribeChannel]);
+    probeRef.current = probe;
+    return () => {
+      dismissed = true;
+      supabase.removeChannel(probe);
+      if (probeRef.current === probe) probeRef.current = null;
+    };
+  }, [user, partnerId, channelName, sessionRole]);
+
+  const joinPartnerSession = useCallback(() => {
+    if (probeRef.current) {
+      supabase.removeChannel(probeRef.current);
+      probeRef.current = null;
+    }
+    setPartnerInviteActive(false);
+    setSessionRole("guest");
+    subscribeChannel("guest");
+  }, [subscribeChannel]);
+
+  const dismissPartnerInvite = useCallback(() => setPartnerInviteActive(false), []);
 
   const value: GroicAPI = {
     current, queue, isPlaying, position, duration, expanded,
-    sessionRole, partnerListening,
+    sessionRole, partnerListening, partnerInviteActive,
     playTrack, toggle, next, prev, seek,
     enqueue, removeFromQueue, clearQueue,
     expand: setExpanded,
     startSession, endSession,
+    joinPartnerSession, dismissPartnerInvite,
   };
 
   return <GroicContext.Provider value={value}>{children}</GroicContext.Provider>;

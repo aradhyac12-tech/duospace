@@ -3,7 +3,7 @@ import { MotionConfig } from "framer-motion";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useParams } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { ThemeProvider, useTheme } from "@/contexts/ThemeContext";
 
@@ -31,6 +31,7 @@ const MapImport = () => import("@/pages/MapView");
 const UsImport = () => import("@/pages/Us");
 const SettingsImport = () => import("@/pages/Settings");
 const GroicImport = () => import("@/pages/Groic");
+const ProfileImport = () => import("@/pages/Profile");
 
 const Chat = lazy(ChatImport);
 const Gallery = lazy(GalleryImport);
@@ -41,9 +42,10 @@ const MapView = lazy(MapImport);
 const Us = lazy(UsImport);
 const Settings = lazy(SettingsImport);
 const Groic = lazy(GroicImport);
+const Profile = lazy(ProfileImport);
 const NotFound = lazy(() => import("@/pages/NotFound"));
 
-// Expose preloaders so BottomNav can warm a chunk on touchstart/hover.
+// Expose preloaders so FloatingDock can warm a chunk on touchstart/hover.
 export const routePreload: Record<string, () => Promise<unknown>> = {
   "/chat": ChatImport,
   "/gallery": GalleryImport,
@@ -54,12 +56,20 @@ export const routePreload: Record<string, () => Promise<unknown>> = {
   "/us": UsImport,
   "/settings": SettingsImport,
   "/groic": GroicImport,
+  "/profile": ProfileImport,
 };
 
 import { PageSkeleton } from "@/components/skeletons/PageSkeleton";
 
 const PageFallback = ({ variant = "default" as const }) => <PageSkeleton variant={variant} />;
 
+
+// Dedicated deep-link form: /surprise/:id folds into the chat query-param form
+// so there is only ONE place (ChatSurpriseHost) that actually resolves it.
+const SurpriseDeepLink = () => {
+  const { id } = useParams();
+  return <Navigate to={`/chat?surprise=${encodeURIComponent(id ?? "")}`} replace />;
+};
 
 const queryClient = new QueryClient();
 
@@ -74,15 +84,42 @@ const ProtectedRoutes = () => {
       setNeedsOnboarding(null);
       return;
     }
+    let cancelled = false;
     const checkProfile = async () => {
-      const { data } = await supabase
-        .from("profiles")
-        .select("gender, display_name")
-        .eq("user_id", user.id)
-        .single();
-      setNeedsOnboarding(!data?.gender);
+      try {
+        const query = supabase
+          .from("profiles")
+          .select("gender, display_name")
+          .eq("user_id", user.id)
+          .single();
+        // Post-auth (esp. right after a native OAuth handoff, where the app
+        // was just backgrounded for the system browser) this request can
+        // stall indefinitely on some devices instead of erroring — that
+        // left needsOnboarding stuck at null forever, i.e. the "Setting
+        // up..." screen that never resolves even though sign-in itself
+        // already succeeded. Race it against a timeout so this screen can
+        // never hang the app: on timeout, err on the side of NOT forcing
+        // onboarding (treat as returning user) so we don't wrongly show
+        // the onboarding flow to an already-onboarded user with flaky network.
+        const timeout = new Promise<"timeout">((resolve) =>
+          setTimeout(() => resolve("timeout"), 8000),
+        );
+        const result = await Promise.race([query, timeout]);
+        if (cancelled) return;
+        if (result === "timeout") {
+          setNeedsOnboarding(false);
+          return;
+        }
+        const { data } = result;
+        setNeedsOnboarding(!data?.gender);
+      } catch {
+        if (!cancelled) setNeedsOnboarding(false);
+      }
     };
     checkProfile();
+    return () => {
+      cancelled = true;
+    };
   }, [user]);
 
   // Preload all route chunks during idle time so first tab tap is instant.
@@ -187,6 +224,7 @@ const App = () => {
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/" element={<Navigate to="/chat" replace />} />
             <Route path="/index" element={<Navigate to="/chat" replace />} />
+            <Route path="/surprise/:id" element={<SurpriseDeepLink />} />
             <Route element={<ProtectedRoutes />}>
               <Route path="/chat" element={<Lazy variant="chat" el={<Chat />} />} />
               <Route path="/gallery" element={<Lazy variant="grid" el={<Gallery />} />} />
@@ -196,6 +234,7 @@ const App = () => {
               <Route path="/map" element={<Lazy variant="map" el={<MapView />} />} />
               <Route path="/us" element={<Lazy variant="list" el={<Us />} />} />
               <Route path="/settings" element={<Lazy variant="settings" el={<Settings />} />} />
+              <Route path="/profile" element={<Lazy variant="default" el={<Profile />} />} />
               <Route path="/groic" element={<Lazy variant="list" el={<Groic />} />} />
             </Route>
             <Route path="*" element={<NotFound />} />

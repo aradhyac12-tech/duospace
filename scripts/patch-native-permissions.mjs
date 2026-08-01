@@ -28,6 +28,19 @@
  *   they approve — the OAuth callback silently goes nowhere instead of
  *   returning to the app.
  *
+ * 3) FCM push notification plumbing for Android (calls, messages, etc):
+ *   - Extra manifest permissions (POST_NOTIFICATIONS, USE_FULL_SCREEN_INTENT,
+ *     VIBRATE, WAKE_LOCK, FOREGROUND_SERVICE, FOREGROUND_SERVICE_PHONE_CALL).
+ *   - Copies native/android/*.kt (NotificationChannels, CallNotificationService,
+ *     CallRingingService) into the app's Kotlin package folder.
+ *   - Registers CallNotificationService + CallRingingService in the manifest,
+ *     plus a default FCM notification channel meta-data entry.
+ *   - Patches MainActivity.kt with the onCreate/onNewIntent/onKeyDown hooks
+ *     needed for: creating notification channels at startup, routing
+ *     Accept/Decline notification taps back into the web app, and silencing
+ *     the incoming-call ringtone on a volume-key press (see
+ *     PUSH_NOTIFICATIONS.md for why the power button can't do this).
+ *
  * This script is idempotent — safe to run repeatedly, and safe to run
  * before the native projects exist (it just skips with a clear message).
  * Run it after every `cap add` and every `cap sync`.
@@ -36,10 +49,12 @@
  *   node scripts/patch-native-permissions.mjs
  */
 
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
-import { join } from "node:path";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const ROOT = process.cwd();
+const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 
 const IOS_PLIST = join(ROOT, "ios", "App", "App", "Info.plist");
 const ANDROID_MANIFEST = join(ROOT, "android", "app", "src", "main", "AndroidManifest.xml");
@@ -60,7 +75,21 @@ const ANDROID_PERMISSIONS = [
   "android.permission.CAMERA",
   "android.permission.RECORD_AUDIO",
   "android.permission.INTERNET",
+  // --- FCM push / incoming-call notifications ---
+  "android.permission.POST_NOTIFICATIONS", // Android 13+ runtime notification permission
+  "android.permission.USE_FULL_SCREEN_INTENT", // Android 14+ requires this declared explicitly
+  "android.permission.VIBRATE",
+  "android.permission.WAKE_LOCK",
+  "android.permission.FOREGROUND_SERVICE",
+  "android.permission.FOREGROUND_SERVICE_PHONE_CALL", // Android 14+ foreground service type grant
 ];
+
+const APP_PACKAGE = "com.duospace.app";
+const ANDROID_JAVA_SRC_DIR = join(ROOT, "android", "app", "src", "main", "java", ...APP_PACKAGE.split("."));
+const NATIVE_SOURCE_DIR = join(SCRIPT_DIR, "..", "native", "android");
+const NATIVE_KOTLIN_FILES = ["NotificationChannels.kt", "CallNotificationService.kt", "CallRingingService.kt"];
+const MAIN_ACTIVITY_KT = join(ANDROID_JAVA_SRC_DIR, "MainActivity.kt");
+const MAIN_ACTIVITY_JAVA = join(ANDROID_JAVA_SRC_DIR, "MainActivity.java");
 
 function insertBeforeLastCloseDict(plist, entry) {
   const closeIdx = plist.lastIndexOf("</dict>");
@@ -141,6 +170,44 @@ function patchAndroidManifest() {
     console.log(`[patch-native-permissions] Android: added ${perm}`);
   }
 
+  // CRITICAL — Android OAuth deep-link fix (duospace://auth):
+  //
+  // Root cause of "Google account selected -> app terminates/restarts ->
+  // cold splash reappears": Capacitor's default template leaves the
+  // launcher Activity at its default launchMode ("standard"). When the
+  // system browser redirects back via the duospace://auth VIEW intent
+  // (matched by the intent-filter below), Android's default behavior for
+  // "standard" launchMode is to instantiate a BRAND NEW Activity on top of
+  // the task instead of delivering onNewIntent() to the already-running
+  // instance. That new instance cold-boots a fresh WebView (hence the
+  // splash reappearing) and is a DIFFERENT Activity/WebView/JS context than
+  // the one whose Auth.tsx registered the appUrlOpen listener and holds the
+  // PKCE code-verifier state — so the callback is effectively lost, and the
+  // system frequently reclaims/finishes the orphaned original Activity
+  // under memory pressure, which is what reads as the app "terminating".
+  //
+  // Fix: android:launchMode="singleTask" on that same Activity. This forces
+  // Android to reuse the existing instance and call onNewIntent() on it
+  // instead, which is what the App plugin needs to fire `appUrlOpen` in the
+  // SAME JS context Auth.tsx is already listening in.
+  if (!manifest.includes(`android:launchMode="singleTask"`)) {
+    const activityOpenMatch = manifest.match(/<activity\b[^>]*>[\s\S]*?android\.intent\.action\.MAIN[\s\S]*?<\/activity>/);
+    // The above also matches on content inside the block; re-locate just the opening tag of that same activity.
+    const blockForTag = activityOpenMatch ? activityOpenMatch[0] : null;
+    const openTagMatch = blockForTag ? blockForTag.match(/^<activity\b[^>]*>/) : null;
+    if (!openTagMatch) {
+      console.warn(
+        "[patch-native-permissions] Could not find the launcher <activity> opening tag — add android:launchMode=\"singleTask\" to it manually (required for the duospace:// OAuth callback to survive).",
+      );
+    } else {
+      const openTag = openTagMatch[0];
+      const patchedOpenTag = openTag.replace(/^<activity\b/, `<activity\n        android:launchMode="singleTask"`);
+      manifest = manifest.replace(openTag, patchedOpenTag);
+      changed = true;
+      console.log('[patch-native-permissions] Android: set android:launchMode="singleTask" on the launcher Activity (fixes OAuth deep-link activity recreation).');
+    }
+  }
+
   // OAuth deep link: <intent-filter> with android:scheme="duospace" on the
   // launcher Activity (the one with the default MAIN/LAUNCHER intent-filter
   // — Capacitor's template has exactly one <activity> block, so we target
@@ -169,6 +236,51 @@ function patchAndroidManifest() {
     }
   }
 
+  // Second deep-link host on the same scheme: duospace://call?... is how
+  // CallNotificationService's Accept/Decline notification actions and
+  // MainActivity's onNewIntent hand a call action back to the web app.
+  if (manifest.includes(`android:scheme="${OAUTH_SCHEME}"`) && !manifest.includes(`android:host="call"`)) {
+    const dataLineMatch = manifest.match(new RegExp(`<data android:scheme="${OAUTH_SCHEME}" android:host="${OAUTH_HOST}" />`));
+    if (dataLineMatch) {
+      const extraDataLine = `        <data android:scheme="${OAUTH_SCHEME}" android:host="call" />\n`;
+      const insertAt = dataLineMatch.index + dataLineMatch[0].length;
+      manifest = manifest.slice(0, insertAt) + "\n" + extraDataLine.trimEnd() + manifest.slice(insertAt);
+      changed = true;
+      console.log(`[patch-native-permissions] Android: added ${OAUTH_SCHEME}://call deep-link host for call notification actions`);
+    } else {
+      console.warn("[patch-native-permissions] Could not locate the duospace:// data element to extend with host=\"call\" — add it manually.");
+    }
+  }
+
+  // FCM services: CallNotificationService + CallRingingService, and the
+  // default notification channel used when a push's `notification` block
+  // doesn't specify android.notification.channel_id explicitly.
+  if (!manifest.includes(`.CallNotificationService"`)) {
+    const servicesBlock =
+      `    <service\n` +
+      `        android:name=".CallNotificationService"\n` +
+      `        android:exported="false">\n` +
+      `        <intent-filter>\n` +
+      `            <action android:name="com.google.firebase.MESSAGING_EVENT" />\n` +
+      `        </intent-filter>\n` +
+      `    </service>\n` +
+      `    <service\n` +
+      `        android:name=".CallRingingService"\n` +
+      `        android:exported="false"\n` +
+      `        android:foregroundServiceType="phoneCall" />\n` +
+      `    <meta-data\n` +
+      `        android:name="com.google.firebase.messaging.default_notification_channel_id"\n` +
+      `        android:value="duospace_messages" />\n`;
+    const appCloseIdx = manifest.lastIndexOf("</application>");
+    if (appCloseIdx === -1) {
+      console.warn("[patch-native-permissions] Could not find </application> in AndroidManifest.xml — add the push services manually.");
+    } else {
+      manifest = manifest.slice(0, appCloseIdx) + servicesBlock + manifest.slice(appCloseIdx);
+      changed = true;
+      console.log("[patch-native-permissions] Android: registered CallNotificationService + CallRingingService, and the default FCM channel.");
+    }
+  }
+
   if (changed) {
     writeFileSync(ANDROID_MANIFEST, manifest, "utf8");
     console.log("[patch-native-permissions] AndroidManifest.xml updated.");
@@ -177,6 +289,158 @@ function patchAndroidManifest() {
   }
 }
 
+function copyNativeKotlinSources() {
+  if (!existsSync(join(ROOT, "android"))) {
+    console.log("[patch-native-permissions] Skipping native source copy — android/ not found (run `npx cap add android` first).");
+    return;
+  }
+  mkdirSync(ANDROID_JAVA_SRC_DIR, { recursive: true });
+  for (const file of NATIVE_KOTLIN_FILES) {
+    const src = join(NATIVE_SOURCE_DIR, file);
+    const dest = join(ANDROID_JAVA_SRC_DIR, file);
+    if (!existsSync(src)) {
+      console.warn(`[patch-native-permissions] Missing template ${src} — skipping.`);
+      continue;
+    }
+    copyFileSync(src, dest);
+    console.log(`[patch-native-permissions] Android: copied ${file} into app/src/main/java/${APP_PACKAGE.replaceAll(".", "/")}/`);
+  }
+}
+
+const MAIN_ACTIVITY_MARKER = "DUOSPACE PUSH ADDITIONS";
+
+const MAIN_ACTIVITY_KOTLIN_ADDITIONS = `
+    // === ${MAIN_ACTIVITY_MARKER} (added by scripts/patch-native-permissions.mjs) ===
+    override fun onCreate(savedInstanceState: android.os.Bundle?) {
+        super.onCreate(savedInstanceState)
+        com.duospace.app.NotificationChannels.createAll(this)
+        logIfOAuthCallback(intent, "onCreate")
+        handleDuospaceCallIntent(intent)
+    }
+
+    override fun onNewIntent(intent: android.content.Intent?) {
+        super.onNewIntent(intent)
+        logIfOAuthCallback(intent, "onNewIntent")
+        handleDuospaceCallIntent(intent)
+    }
+
+    /**
+     * Diagnostic only — does not affect routing. Capacitor's own Bridge
+     * (invoked via super.onNewIntent above) is what actually fires the JS
+     * \`appUrlOpen\` event; this just proves, from native logcat, WHICH
+     * lifecycle method delivered the duospace://auth callback.
+     *
+     * Expected/healthy: "onNewIntent" (activity reused, launchMode=singleTask
+     * doing its job — see AndroidManifest.xml).
+     * Red flag: "onCreate" — the Activity was recreated instead of reused,
+     * which reproduces the "app terminates/restarts after Google sign-in"
+     * bug. If you see this, verify android:launchMode="singleTask" is
+     * actually present on this Activity in the built APK's manifest (run
+     * \`npm run cap:sync\` so scripts/patch-native-permissions.mjs re-applies
+     * it, then a full \`./gradlew clean\`).
+     */
+    private fun logIfOAuthCallback(intent: android.content.Intent?, via: String) {
+        val data = intent?.data ?: return
+        if (data.scheme == "duospace" && data.host == "auth") {
+            val level = if (via == "onNewIntent") android.util.Log.INFO else android.util.Log.WARN
+            val pathPart = data.path.orEmpty()
+            var msg = "duospace://auth callback delivered via $via (path=$pathPart)"
+            if (via == "onCreate") {
+                msg += " — ACTIVITY WAS RECREATED, expected onNewIntent; check launchMode=singleTask"
+            }
+            android.util.Log.println(level, "DuoSpaceOAuth", msg)
+        }
+    }
+
+    private fun handleDuospaceCallIntent(intent: android.content.Intent?) {
+        val callId = intent?.getStringExtra("callId") ?: return
+        val action = intent.getStringExtra("callAction")
+
+        // Whether accepted, declined, or just tapped to open the app, the
+        // ringtone/vibration loop should stop — the in-app IncomingCallOverlay
+        // (JS) takes over from here for "accept".
+        val stopIntent = android.content.Intent(this, com.duospace.app.CallRingingService::class.java).apply {
+            this.action = com.duospace.app.CallRingingService.ACTION_STOP
+        }
+        startService(stopIntent)
+
+        val payload = org.json.JSONObject().apply {
+            put("callId", callId)
+            put("action", action ?: "open")
+            put("callType", intent.getStringExtra("callType"))
+            put("conversationId", intent.getStringExtra("conversationId"))
+            put("roomName", intent.getStringExtra("roomName"))
+        }
+        bridge?.webView?.post {
+            bridge?.webView?.evaluateJavascript(
+                "window.dispatchEvent(new CustomEvent('duospace-call-action', { detail: \${payload} }))",
+                null,
+            )
+        }
+    }
+
+    /**
+     * Silences the incoming-call ringtone/vibration on a physical volume-key
+     * press, without touching system volume and without ending the call —
+     * matching real phone behavior.
+     *
+     * PLATFORM NOTE: the power button intentionally is NOT wired here. On
+     * stock Android, silencing a ringing call with the power button is
+     * handled by the system's own Telecom/Phone stack (the default dialer),
+     * which third-party apps cannot hook into — KEYCODE_POWER is not
+     * delivered to app activities at all. Only the volume keys are
+     * interceptable by a normal foreground Activity, so that's what's
+     * implemented here.
+     */
+    override fun onKeyDown(keyCode: Int, event: android.view.KeyEvent?): Boolean {
+        if ((keyCode == android.view.KeyEvent.KEYCODE_VOLUME_UP || keyCode == android.view.KeyEvent.KEYCODE_VOLUME_DOWN) &&
+            com.duospace.app.CallRingingService.isRinging && !com.duospace.app.CallRingingService.isSilenced
+        ) {
+            val silenceIntent = android.content.Intent(this, com.duospace.app.CallRingingService::class.java).apply {
+                this.action = com.duospace.app.CallRingingService.ACTION_SILENCE
+            }
+            startService(silenceIntent)
+            return true
+        }
+        return super.onKeyDown(keyCode, event)
+    }
+    // === END ${MAIN_ACTIVITY_MARKER} ===
+`;
+
+function patchMainActivity() {
+  if (existsSync(MAIN_ACTIVITY_JAVA)) {
+    console.warn(
+      "[patch-native-permissions] MainActivity.java found (Java template) — automatic patching only supports the Kotlin template. " +
+      "See PUSH_NOTIFICATIONS.md \u00a7 'Manual MainActivity.java integration' for the equivalent Java snippet to add by hand.",
+    );
+    return;
+  }
+  if (!existsSync(MAIN_ACTIVITY_KT)) {
+    console.log("[patch-native-permissions] Skipping MainActivity patch — MainActivity.kt not found (run `npx cap add android` first).");
+    return;
+  }
+  let source = readFileSync(MAIN_ACTIVITY_KT, "utf8");
+  if (source.includes(MAIN_ACTIVITY_MARKER)) {
+    console.log("[patch-native-permissions] MainActivity.kt already has the push-notification additions.");
+    return;
+  }
+
+  const classOpenMatch = source.match(/class MainActivity\s*:\s*BridgeActivity\s*\(\s*\)\s*\{/);
+  if (!classOpenMatch) {
+    console.warn(
+      "[patch-native-permissions] Could not find `class MainActivity : BridgeActivity() {` in MainActivity.kt — " +
+      "add the snippet from native/android/MainActivity-additions.kt.snippet manually.",
+    );
+    return;
+  }
+  const insertAt = classOpenMatch.index + classOpenMatch[0].length;
+  source = source.slice(0, insertAt) + MAIN_ACTIVITY_KOTLIN_ADDITIONS + source.slice(insertAt);
+  writeFileSync(MAIN_ACTIVITY_KT, source, "utf8");
+  console.log("[patch-native-permissions] MainActivity.kt: added onCreate/onNewIntent/onKeyDown push-notification hooks.");
+}
+
 patchIosPlist();
 patchAndroidManifest();
+copyNativeKotlinSources();
+patchMainActivity();
 console.log("[patch-native-permissions] Done. Rebuild the native app (Xcode / Android Studio) for changes to take effect.");

@@ -1,13 +1,15 @@
 import { useLocation, useNavigate } from "react-router-dom";
-import { MessageCircle, Phone, Settings } from "lucide-react";
+import { MessageCircle, Phone } from "lucide-react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { routePreload } from "@/App";
-import { hapticLight } from "@/lib/haptics";
-const triggerHaptic = (_kind?: string) => { hapticLight(); };
+import { hapticTick } from "@/lib/haptics";
+// Dock nav is a "tab focus" interaction — hapticTick is the haptics system's
+// own documented choice for that (see src/lib/haptics.ts), not a generic tap.
+const triggerHaptic = (_kind?: string) => { hapticTick(); };
 
 type Tab = {
   path: string;
@@ -16,17 +18,17 @@ type Tab = {
   badgeKey?: "messages" | "calls";
 };
 
-// Bottom bar is intentionally limited to exactly 3 pages. Everything else
-// (Gallery, Us, Map, Music, Shayari, Love Letter, Schedule Send) lives in the
-// in-chat sparkle "Hub" (GridMenu, opened from Chat.tsx) instead of a second
-// "More" sheet living here — one place for "everything else", not two.
+// Bottom bar is intentionally limited to exactly Chat + Calls. Settings now
+// lives behind Profile (tap the partner name/avatar in the Chat header) —
+// it's a secondary destination, not a primary tab. Everything else
+// (Gallery, Us, Map, Music, Shayari, Love Letter, Schedule Send) lives in
+// the in-chat sparkle "Hub" (GridMenu, opened from Chat.tsx).
 const PRIMARY: Tab[] = [
   { path: "/chat", icon: MessageCircle, label: "Chat", badgeKey: "messages" },
   { path: "/calls", icon: Phone, label: "Calls", badgeKey: "calls" },
-  { path: "/settings", icon: Settings, label: "Settings" },
 ];
 
-const HIDDEN_PAGES = ["/settings"];
+const HIDDEN_PAGES = ["/settings", "/profile"];
 
 const FloatingDock = () => {
   const location = useLocation();
@@ -71,26 +73,35 @@ const FloatingDock = () => {
   }, [location.pathname, user]);
 
   // ── Hide on scroll-down, show on scroll-up ─────────────────────────────────
+  // Chat/Calls/Settings each scroll their own internal overflow-y-auto div,
+  // not the window (the page root is h-[100dvh] overflow-hidden) — so a
+  // window-only scroll listener never fires here. "scroll" events don't
+  // bubble, but capture-phase dispatch still passes through document, so
+  // listening on document with capture:true catches scrolling from whichever
+  // container is actually scrolling on the current screen.
   useEffect(() => {
     if (isHidden) return;
     let ticking = false;
-    const onScroll = () => {
+    const onScroll = (e: Event) => {
       if (ticking) return;
       ticking = true;
       requestAnimationFrame(() => {
-        const y = window.scrollY;
-        const dy = y - lastScrollY.current;
-        if (dy > 8 && y > 60) setIsVisible(false);
-        else if (dy < -8 || y < 20) setIsVisible(true);
-        lastScrollY.current = y;
+        const target = e.target as HTMLElement | Document | null;
+        const top = !target || target === document
+          ? window.scrollY
+          : (target as HTMLElement).scrollTop ?? 0;
+        const dy = top - lastScrollY.current;
+        if (dy > 8 && top > 60) setIsVisible(false);
+        else if (dy < -8 || top < 20) setIsVisible(true);
+        lastScrollY.current = top;
         ticking = false;
       });
     };
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
+    document.addEventListener("scroll", onScroll, { passive: true, capture: true });
+    return () => document.removeEventListener("scroll", onScroll, true);
   }, [isHidden]);
 
-  useEffect(() => { setIsVisible(true); }, [location.pathname]);
+  useEffect(() => { setIsVisible(true); lastScrollY.current = 0; }, [location.pathname]);
 
   if (isHidden) return null;
 
@@ -116,22 +127,25 @@ const FloatingDock = () => {
         className={cn(
           "relative flex items-center justify-center rounded-full transition-colors outline-none",
           "h-11 w-11 active:scale-95",
-          isActive ? "text-foreground" : "text-muted-foreground hover:text-foreground",
+          isActive ? "text-primary" : "text-muted-foreground hover:text-foreground",
         )}
       >
         {isActive && (
           <motion.span
             layoutId="dock-active-pill"
-            className="absolute inset-0 rounded-full bg-foreground/10"
+            className="absolute inset-0 rounded-full bg-primary/12 ring-1 ring-primary/15"
+            style={{ boxShadow: "var(--shadow-soft)" }}
             transition={{ type: "spring", stiffness: 500, damping: 38 }}
           />
         )}
         <Icon
           className="relative z-10 h-[20px] w-[20px]"
           strokeWidth={isActive ? 2.2 : 1.8}
+          fill={isActive ? "currentColor" : "none"}
+          fillOpacity={isActive ? 0.12 : 0}
         />
         {count > 0 && (
-          <span className="absolute top-1 right-1 z-20 h-4 min-w-4 px-1 rounded-full bg-destructive text-destructive-foreground text-[9px] font-bold flex items-center justify-center leading-none">
+          <span className="absolute top-1 right-1 z-20 h-4 min-w-4 px-1 rounded-full bg-destructive text-destructive-foreground text-[9px] font-bold flex items-center justify-center leading-none ring-2 ring-background">
             {count > 99 ? "99+" : count}
           </span>
         )}
@@ -153,9 +167,9 @@ const FloatingDock = () => {
     >
       <div
         className={cn(
-          "pointer-events-auto flex items-center gap-1 p-1.5 rounded-full",
-          "bg-card/70 backdrop-blur-2xl border border-border/60",
-          "shadow-[0_20px_60px_-20px_hsl(var(--foreground)/0.35)]",
+          "pointer-events-auto flex items-center gap-2 px-1.5 py-1 rounded-full",
+          "bg-card/85 backdrop-blur-md border border-border/25",
+          "shadow-[0_4px_16px_-6px_hsl(var(--foreground)/0.18)]",
         )}
       >
         {PRIMARY.map((t) => renderTab(t))}

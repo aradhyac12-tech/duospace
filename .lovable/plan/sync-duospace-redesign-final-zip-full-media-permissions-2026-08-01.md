@@ -1,33 +1,28 @@
-# Sync `duospace-redesign-final.zip` + full media permissions
+## Auth-only fix plan
 
-## 1. Pull the zip in as-is
+1. **Stop the bad OAuth redirect**
+  - Update the Google OAuth start flow so web preview uses the current app origin callback (`/auth/callback`) and native builds use `duospace://auth`.
+  - Add a guard that rejects invalid callback targets like `null` or `http://localhost:3000` before OAuth starts, with a clear error instead of sending the browser to a dead URL.
+2. **Make OAuth callback session handling robust**
+  - Create a shared callback finalizer that handles both callback styles:
+    - PKCE `?code=...` via `exchangeCodeForSession`
+    - implicit/hash `#access_token=...&refresh_token=...` via `setSession`
+  - Use it from both `/auth/callback` on web and Capacitor `appUrlOpen` on native.
+  - After a session is installed, navigate to the protected app route instead of leaving the user on a callback/loading state.
+3. **Fix native deep-link registration in code/docs where possible**
+  - Keep `duospace://auth` as the native OAuth redirect URI.
+  - Ensure the Capacitor flow opens Google in the system browser and closes it after the app receives the deep link.
+  - Add a native configuration checklist in the project docs/comments for the exact Supabase allowed redirect URL and Android/iOS deep-link entries; if native platform folders are absent, the codebase cannot patch them directly yet.
+4. **Remove Google button lag/double-click behavior**
+  - Ensure the Google button enters loading immediately, disables while redirecting/opening browser, and does not get stuck if OAuth initiation fails.
+  - Avoid extra session polling where the Supabase callback can complete directly.
+5. **Fix QR edge function reachability from the app side**
+  - Improve QR diagnostics so the UI distinguishes: function not deployed, CORS/preflight failure, and HTTP function errors.
+  - Confirm `qr-anon-issue` and `redeem-qr-token` remain JWT-disabled in `supabase/config.toml` and use compatible CORS headers.
+  - Add the exact deploy/config note needed for your existing Supabase project, because the current network signal is a transport-level `Failed to fetch` to `qr-anon-issue`, which usually means the function is not deployed or CORS is rejecting the preview origin before the function body runs.
+6. **Verify in preview**
+  - Run the web callback path locally with representative callback URLs and verify it installs/handles sessions without navigating to `null` or `localhost:3000`.
+  - Verify `/auth` renders and the Google button/QR flows show correct states and errors.
+7. **Add a new function in the manual log in the magic links and otp forget password links are not sending on the email it just shows the pop up of confimation link send to your email solve that add proper function where confirmation links recives and redirects to app properly with proper log in then forgot password and otps and device log in alert should also be received** 
 
-Sync all 564 files from the archive into the project, overwriting existing files. Verified: the archive contains no `.git` metadata, so nothing can corrupt the repo.
-
-- Copy everything except the vendored `native-plugins/*/node_modules` folders (144 entries — reinstalled by the package manager instead).
-- The archive brings a newer app version (3.2.0) with new pieces: `IconStudio`, `SecurityDashboard`, `GroicInviteBanner`, `useDeviceStatus`, `useAudioRoute`, two local Capacitor plugins (`duospace-audio-route`, `duospace-device-status`), `docs/` and a much larger `scripts/patch-native-permissions.mjs`.
-- Run install so the new local file-linked plugins and any new deps resolve, then typecheck and confirm the preview renders.
-
-## 2. Full media permissions (camera, photo library, files)
-
-A single permission layer used by every media entry point (chat photo/video attach, camera with filters, gallery upload, Peek Guard face enrollment, QR scanner, backup export/import).
-
-- **Permission service** — one module that, per platform, checks and requests: camera, microphone, photo library read, photo library add/save, and file/document access. Native uses the Capacitor Camera + Filesystem permission APIs; web maps to `getUserMedia` / file input with graceful capability detection.
-- **Request at point of use, not just launch** — every media action asks first, and only opens the picker/camera once granted. Launch-time batch request stays as a convenience.
-- **Fallback UI when denied** — a shared sheet explaining exactly what is blocked, why the feature needs it, and a button that deep-links to the OS app settings (native) or shows browser-specific re-enable steps (web). Permanently-denied ("don't ask again") is detected and shown differently from a first-time denial.
-- **Camera-in-use fallback** — keeps the existing busy-camera recovery path and routes it through the same UI so a `NotReadableError` shows "close the other app/tab, then retry" instead of a generic failure.
-- **Degraded modes** — if the photo library is denied, media flows fall back to camera capture; if camera is denied, they fall back to file picker; if all are denied, the attach action is disabled with a visible reason rather than silently failing.
-
-## 3. Native (Capacitor / APK / iOS) declarations
-
-Extend `scripts/patch-native-permissions.mjs` (already idempotent and wired to `npm run cap:sync`) so a fresh `cap add` produces a build that can actually be granted these permissions:
-
-- **iOS Info.plist**: `NSCameraUsageDescription`, `NSMicrophoneUsageDescription`, `NSPhotoLibraryUsageDescription`, `NSPhotoLibraryAddUsageDescription`, plus `NSFaceIDUsageDescription` and the existing `duospace://auth` URL scheme.
-- **AndroidManifest.xml**: `CAMERA`, `RECORD_AUDIO`, `READ_MEDIA_IMAGES`, `READ_MEDIA_VIDEO`, `READ_MEDIA_VISUAL_USER_SELECTED` (Android 14 partial access), legacy `READ_EXTERNAL_STORAGE` / `WRITE_EXTERNAL_STORAGE` with `maxSdkVersion` guards, `POST_NOTIFICATIONS`, and the OAuth intent-filter.
-- Android 13+ granular media permissions are handled in the request logic so the app doesn't ask for the deprecated storage permission on new devices.
-
-## Technical notes
-
-Files expected to change: everything in the archive (bulk sync), plus `scripts/patch-native-permissions.mjs`, a new `src/lib/mediaPermissions.ts`, a new `src/components/PermissionDeniedSheet.tsx`, and the call sites in `Chat.tsx`, `CameraWithFilters.tsx`, `Gallery.tsx`, `FaceEnrollmentDialog.tsx`, `QRSignInScanner.tsx`, `useLaunchPermissions.ts`, and `cameraBus.ts`.
-
-Verification in-sandbox: typecheck + preview render. Device-level permission prompts can only be confirmed after you run `npx cap sync` and build in Xcode / Android Studio — the patch script output will list exactly which keys and permissions it injected.
+**Out of scope:** unrelated chat/calls/features, data model changes, or changing your Google/Supabase provider credentials.

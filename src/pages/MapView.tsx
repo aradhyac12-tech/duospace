@@ -1,6 +1,6 @@
 import PageHeader from "@/components/PageHeader";
 import { motion } from "framer-motion";
-import { MapPin, Navigation, AlertCircle, Layers, Radio, MousePointerClick, Maximize2, Minimize2, Crosshair, WifiOff, X } from "lucide-react";
+import { MapPin, Navigation, AlertCircle, Layers, Radio, MousePointerClick, Maximize2, Minimize2, Crosshair, WifiOff, X, BatteryFull, BatteryMedium, BatteryLow, BatteryWarning, BatteryCharging, Bell, BellOff } from "lucide-react";
 import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -8,6 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Switch } from "@/components/ui/switch";
 import { hapticLight } from "@/lib/haptics";
 import { useLiveLocation } from "@/hooks/useLiveLocation";
+import { usePublishDeviceStatus } from "@/hooks/useDeviceStatus";
 import { logInfo, logWarn } from "@/lib/telemetry";
 import "leaflet/dist/leaflet.css";
 
@@ -31,6 +32,60 @@ interface PartnerLocation {
   longitude: number;
   updated_at: string;
 }
+
+interface PartnerDeviceStatus {
+  battery_level: number | null;
+  battery_charging: boolean | null;
+  ringer_mode: "normal" | "vibrate" | "silent" | "unknown" | null;
+  device_status_updated_at: string | null;
+}
+
+/** Device status considered stale beyond this — same window as the location
+ *  staleness check, so the two indicators go gray together rather than one
+ *  looking fresh while the other silently lies. */
+const DEVICE_STATUS_STALE_MS = 5 * 60_000;
+
+const BatteryIcon = ({ level, charging }: { level: number; charging: boolean | null }) => {
+  if (charging) return <BatteryCharging className="h-3.5 w-3.5" aria-hidden="true" />;
+  if (level <= 15) return <BatteryWarning className="h-3.5 w-3.5" aria-hidden="true" />;
+  if (level <= 45) return <BatteryLow className="h-3.5 w-3.5" aria-hidden="true" />;
+  if (level <= 80) return <BatteryMedium className="h-3.5 w-3.5" aria-hidden="true" />;
+  return <BatteryFull className="h-3.5 w-3.5" aria-hidden="true" />;
+};
+
+/**
+ * Small pill showing the partner's battery % and ringer state. Deliberately
+ * renders nothing (not an "unknown" placeholder) when there's no data yet,
+ * and drops the ringer half entirely when ringerMode is 'unknown' — that's
+ * always true for iOS partners (no public API for the mute switch there;
+ * see native-plugins/device-status/README.md) so their pill just shows
+ * battery alone rather than a bell icon that might be lying.
+ */
+const PartnerStatusPill = ({ status, stale }: { status: PartnerDeviceStatus | null; stale: boolean }) => {
+  if (!status || status.battery_level == null) return null;
+  const level = Math.round(status.battery_level);
+  const showRinger = status.ringer_mode === "normal" || status.ringer_mode === "silent" || status.ringer_mode === "vibrate";
+  return (
+    <div className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 bg-background/90 backdrop-blur-sm border border-border shadow-sm ${stale ? "opacity-50" : ""}`}>
+      <span className={level <= 15 && !status.battery_charging ? "text-destructive" : "text-foreground/80"}>
+        <BatteryIcon level={level} charging={status.battery_charging} />
+      </span>
+      <span className="text-[11px] font-medium tabular-nums">{level}%</span>
+      {showRinger && (
+        <>
+          <span className="h-3 w-px bg-border" aria-hidden="true" />
+          {status.ringer_mode === "silent" ? (
+            <BellOff className="h-3.5 w-3.5 text-muted-foreground" aria-label="Phone on silent" />
+          ) : status.ringer_mode === "vibrate" ? (
+            <BellOff className="h-3.5 w-3.5 text-muted-foreground" aria-label="Phone on vibrate" />
+          ) : (
+            <Bell className="h-3.5 w-3.5 text-muted-foreground" aria-label="Ringer on" />
+          )}
+        </>
+      )}
+    </div>
+  );
+};
 
 type MapStyle = "street" | "satellite" | "voyager";
 
@@ -62,6 +117,7 @@ const MapView = () => {
   const [realtimeOk, setRealtimeOk] = useState(true);
   const [transportMode, setTransportMode] = useState<"realtime" | "polling">("realtime");
   const [partnerPresence, setPartnerPresence] = useState<{ last_seen_at: string | null; tracking_state: string | null } | null>(null);
+  const [partnerDeviceStatus, setPartnerDeviceStatus] = useState<PartnerDeviceStatus | null>(null);
   const [debugOpen, setDebugOpen] = useState(false);
   const chipTapRef = useRef<{ count: number; last: number }>({ count: 0, last: 0 });
 
@@ -114,6 +170,12 @@ const MapView = () => {
   const locationError = live.error;
   const permissionState = live.permission;
 
+  // Publishes MY battery/ringer into profiles for my partner to see (they
+  // run the same hook, so it's symmetric) — gated on the same sharingActive
+  // flag as location, so turning off location sharing also stops leaking
+  // battery/ringer, not just position.
+  usePublishDeviceStatus(user?.id ?? null, !!user && sharingActive);
+
   // Fetch partner + persisted location mode
   useEffect(() => {
     if (!user) return;
@@ -155,10 +217,13 @@ const MapView = () => {
     const fetchPresence = async () => {
       const { data } = await supabase
         .from("profiles")
-        .select("last_seen_at, tracking_state")
+        .select("last_seen_at, tracking_state, battery_level, battery_charging, ringer_mode, device_status_updated_at")
         .eq("user_id", partnerId)
         .maybeSingle();
-      if (!cancelled && data) setPartnerPresence(data as any);
+      if (!cancelled && data) {
+        setPartnerPresence(data as any);
+        setPartnerDeviceStatus(data as any);
+      }
     };
 
     const subscribe = () => {
@@ -173,6 +238,21 @@ const MapView = () => {
               lastPayloadAtRef.current = Date.now();
               setTransportMode("realtime");
             }
+          },
+        )
+        .on(
+          "postgres_changes",
+          { event: "UPDATE", schema: "public", table: "profiles", filter: `user_id=eq.${partnerId}` },
+          (payload) => {
+            const row = payload.new as any;
+            if (!row || row.user_id !== partnerId) return;
+            setPartnerPresence({ last_seen_at: row.last_seen_at, tracking_state: row.tracking_state });
+            setPartnerDeviceStatus({
+              battery_level: row.battery_level,
+              battery_charging: row.battery_charging,
+              ringer_mode: row.ringer_mode,
+              device_status_updated_at: row.device_status_updated_at,
+            });
           },
         )
         .subscribe((status) => {
@@ -212,8 +292,13 @@ const MapView = () => {
       .then(({ data }) => {
         if (data) { setPartnerLocation(data as PartnerLocation); lastPayloadAtRef.current = Date.now(); }
       });
-    supabase.from("profiles").select("last_seen_at, tracking_state").eq("user_id", partnerId).maybeSingle()
-      .then(({ data }) => { if (data) setPartnerPresence(data as any); });
+    supabase.from("profiles").select("last_seen_at, tracking_state, battery_level, battery_charging, ringer_mode, device_status_updated_at").eq("user_id", partnerId).maybeSingle()
+      .then(({ data }) => {
+        if (data) {
+          setPartnerPresence(data as any);
+          setPartnerDeviceStatus(data as any);
+        }
+      });
   }, [partnerId, pageVisible, online]);
 
   // ─── Watchdog: realtime ↔ polling fallback ──────────────────────────────
@@ -232,8 +317,11 @@ const MapView = () => {
           .maybeSingle();
         if (data) { setPartnerLocation(data as PartnerLocation); lastPayloadAtRef.current = Date.now(); }
         const { data: prof } = await supabase
-          .from("profiles").select("last_seen_at, tracking_state").eq("user_id", partnerId).maybeSingle();
-        if (prof) setPartnerPresence(prof as any);
+          .from("profiles").select("last_seen_at, tracking_state, battery_level, battery_charging, ringer_mode, device_status_updated_at").eq("user_id", partnerId).maybeSingle();
+        if (prof) {
+          setPartnerPresence(prof as any);
+          setPartnerDeviceStatus(prof as any);
+        }
       }, POLL_INTERVAL_MS);
     };
 
@@ -264,6 +352,9 @@ const MapView = () => {
   const partnerLocAge = partnerLocation ? now - new Date(partnerLocation.updated_at).getTime() : Infinity;
   const partnerHbAge  = partnerPresence?.last_seen_at ? now - new Date(partnerPresence.last_seen_at).getTime() : Infinity;
   const partnerStale  = !!partnerLocation && partnerLocAge > STALE_PEER_MS && partnerHbAge > HEARTBEAT_STALE_MS;
+  const deviceStatusAge = partnerDeviceStatus?.device_status_updated_at
+    ? now - new Date(partnerDeviceStatus.device_status_updated_at).getTime() : Infinity;
+  const deviceStatusStale = deviceStatusAge > DEVICE_STATUS_STALE_MS;
   useEffect(() => {
     if (partnerStale) logWarn("liveLocation", "stale_peer", { loc_ms: partnerLocAge, hb_ms: partnerHbAge });
   }, [partnerStale]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -575,7 +666,7 @@ const MapView = () => {
             </span>
           )}
           {partnerStale && partnerLocation && (
-            <span className="px-2.5 py-1 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30 text-[10px] font-medium">
+            <span className="px-2.5 py-1 rounded-full bg-warning/15 text-warning border border-warning/30 text-[10px] font-medium">
               {partnerName}'s location is stale
             </span>
           )}
@@ -612,7 +703,7 @@ const MapView = () => {
           <button
             onClick={(e) => { e.stopPropagation(); recenter(); }}
             aria-label="Recenter map"
-            className="absolute right-3 z-[1000] h-12 w-12 rounded-full bg-foreground text-background shadow-lg flex items-center justify-center active:scale-95 transition-transform"
+            className="absolute right-3 z-[1000] h-12 w-12 rounded-full bg-primary text-primary-foreground shadow-lg flex items-center justify-center active:scale-95 transition-transform"
             style={{ bottom: isFullscreen ? "calc(env(safe-area-inset-bottom) + 16px)" : "16px" }}
           >
             <Crosshair className="h-5 w-5" />
@@ -627,7 +718,7 @@ const MapView = () => {
               </div>
               <p className="text-sm font-medium">Location Access Required</p>
               <p className="text-xs text-muted-foreground max-w-xs">{locationError ?? "Enable location in your browser settings."}</p>
-              <button onClick={(e) => { e.stopPropagation(); requestLocationPermission(); }} className="bg-foreground text-background text-sm px-5 py-2.5 rounded-xl">
+              <button onClick={(e) => { e.stopPropagation(); requestLocationPermission(); }} className="bg-primary text-primary-foreground text-sm px-5 py-2.5 rounded-xl">
                 Request Permission
               </button>
             </div>
@@ -638,7 +729,7 @@ const MapView = () => {
           <div className="absolute inset-0 flex items-center justify-center bg-background/60 backdrop-blur-sm z-[1000]">
             <div className="text-center space-y-3">
               <div className="h-16 w-16 rounded-full bg-accent mx-auto flex items-center justify-center animate-pulse">
-                <MapPin className="h-7 w-7 text-foreground" />
+                <MapPin className="h-7 w-7 text-accent-foreground" />
               </div>
               <p className="text-sm text-muted-foreground">Getting your location...</p>
             </div>
@@ -680,27 +771,32 @@ const MapView = () => {
         </div>
 
         <div className="bg-card rounded-2xl border border-border p-4 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div>
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
               <p className="text-xs text-muted-foreground uppercase tracking-wider">Distance apart</p>
               <p className="text-3xl font-serif mt-1">{distanceKm !== null ? formatDistance(distanceKm) : "—"}</p>
               {partnerLocation && (
                 <p className="text-[10px] text-muted-foreground mt-1">
                   {partnerName} • {timeAgo(partnerLocation.updated_at)}
-                  {partnerStale && <span className="ml-1 text-amber-600 dark:text-amber-400">· stale</span>}
+                  {partnerStale && <span className="ml-1 text-warning">· stale</span>}
                 </p>
               )}
               {!partnerId && <p className="text-[10px] text-muted-foreground mt-1">Link with partner in Settings</p>}
+              {partnerDeviceStatus && (
+                <div className="mt-2">
+                  <PartnerStatusPill status={partnerDeviceStatus} stale={deviceStatusStale} />
+                </div>
+              )}
             </div>
-            <button onClick={recenter} className="h-11 w-11 rounded-xl bg-foreground flex items-center justify-center" aria-label="Recenter">
-              <Navigation className="h-5 w-5 text-background" />
+            <button onClick={recenter} className="h-11 w-11 rounded-xl bg-primary flex items-center justify-center shrink-0" aria-label="Recenter">
+              <Navigation className="h-5 w-5 text-primary-foreground" />
             </button>
           </div>
         </div>
 
         {myLocation && (
           <div className="bg-card rounded-xl border border-border p-3 flex items-center gap-3">
-            <div className={`h-2 w-2 rounded-full ${live.state === "tracking" ? "bg-primary animate-pulse" : live.state === "paused" ? "bg-muted-foreground" : "bg-amber-500 animate-pulse"}`} />
+            <div className={`h-2 w-2 rounded-full ${live.state === "tracking" ? "bg-primary animate-pulse" : live.state === "paused" ? "bg-muted-foreground" : "bg-warning animate-pulse"}`} />
             <p className="text-[11px] text-muted-foreground">
               {live.state === "tracking" && `Live • ${myLocation.latitude.toFixed(4)}, ${myLocation.longitude.toFixed(4)}`}
               {live.state === "paused" && "Paused — sharing only when app is open"}

@@ -4,7 +4,8 @@ import { Capacitor } from "@capacitor/core";
 // inline duplicate. All localStorage access goes through one safe try/catch
 // boundary, consistent with the rest of the app.
 import storage from "@/lib/storage";
-import { deriveTokens, applyTokens, ColorMode, ThemeIdentity } from "@/lib/themeEngine";
+import { idbGet, idbSet, idbDelete } from "@/lib/idbStore";
+import { deriveTokens, deriveDynamicTokens, applyTokens, ColorMode, ThemeIdentity, ThemeModePreference, resolveColorMode } from "@/lib/themeEngine";
 
 export type ThemeColor =
   | "midnight"
@@ -16,7 +17,15 @@ export type ThemeColor =
   | "rose"
   | "minimal-light"
   | "minimal-dark"
-  | "monochrome";
+  | "monochrome"
+  | "lavender"
+  | "mint"
+  | "plum"
+  | "coral"
+  | "slate"
+  | "blush"
+  | "cocoa"
+  | "lagoon";
 
 // Backward-compat: old preset ids (before the preset system was rebuilt)
 // map onto the closest new identity so a saved `duo-theme` value from an
@@ -38,7 +47,7 @@ const resolveThemeId = (id: string | null): ThemeColor => {
   return "midnight";
 };
 
-interface AppSettings {
+export interface AppSettings {
   biometricLock: boolean;
   notifications: boolean;
   hapticFeedback: boolean;
@@ -50,12 +59,14 @@ interface AppSettings {
   peekCheckInterval: number;
   // New owner-recognition pipeline knobs
   peekMatchThreshold: number;        // 0..1 cosine similarity (default 0.7)
-  peekConsistencyFrames: number;     // 1..10 (default 4)
-  peekLockDelay: number;             // ms (default 1500)
+  peekConsistencyFrames: number;     // 1..10 (default 2)
+  peekLockDelay: number;             // ms (default 150 — see usePeekDetection.ts)
   peekMinFaceArea: number;           // 0..0.2 normalized area (default 0.015)
   peekAlertOnStranger: boolean;      // default true
   peekAlertOnMultipleFaces: boolean; // default true
   peekAlertOnNoFace: boolean;        // default false
+  peekStaticStrangerTimeoutMs: number; // ms, default 6000 (0 = disable spoof-timeout escalation)
+  peekDebugMode: boolean;            // default false — live signal HUD, see PeekGuard.tsx
   anniversaryDate: string | null;
   moodDetection: boolean; // Fix #Bug11: explicit opt-in, defaults off
 }
@@ -66,6 +77,17 @@ interface ThemeContextType {
   colorMode: ColorMode;
   setColorMode: (mode: ColorMode) => void;
   toggleColorMode: () => void;
+  // Adaptive theming: the user's actual preference. "light"/"dark" are
+  // explicit manual choices; "auto" mirrors the OS/browser color-scheme
+  // live; "schedule" flips at the configured scheduleDarkStart/End times;
+  // "dynamic" continuously blends every token through the day (see
+  // themeEngine.ts). `colorMode` above always reflects the binary
+  // light/dark classification, even while "dynamic" is active.
+  themeMode: ThemeModePreference;
+  setThemeMode: (mode: ThemeModePreference) => void;
+  scheduleDarkStart: string;
+  scheduleDarkEnd: string;
+  setScheduleTimes: (start: string, end: string) => void;
   chatWallpaper: string | null;
   setChatWallpaper: (wp: string | null) => void;
   appIcon: string | null;
@@ -86,14 +108,16 @@ const defaultSettings: AppSettings = {
   peekGuard: false,
   peekFaceThreshold: 2,
   peekDetectionDelay: 1500,
-  peekCheckInterval: 600,
+  peekCheckInterval: 300,
   peekMatchThreshold: 0.7,
-  peekConsistencyFrames: 4,
-  peekLockDelay: 1500,
+  peekConsistencyFrames: 2,
+  peekLockDelay: 150,
   peekMinFaceArea: 0.015,
   peekAlertOnStranger: true,
   peekAlertOnMultipleFaces: true,
   peekAlertOnNoFace: false,
+  peekStaticStrangerTimeoutMs: 6000,
+  peekDebugMode: false,
   anniversaryDate: null,
   moodDetection: false,
 };
@@ -104,6 +128,11 @@ const ThemeContext = createContext<ThemeContextType>({
   colorMode: "dark",
   setColorMode: () => {},
   toggleColorMode: () => {},
+  themeMode: "dark",
+  setThemeMode: () => {},
+  scheduleDarkStart: "19:00",
+  scheduleDarkEnd: "07:00",
+  setScheduleTimes: () => {},
   chatWallpaper: null,
   setChatWallpaper: () => {},
   appIcon: null,
@@ -135,6 +164,14 @@ export const THEME_IDENTITIES: Record<ThemeColor, ThemeIdentity> = {
   "minimal-light":{ primary: { h: 0,   s: 0,  l: 18 }, accent: { h: 0,   s: 0,  l: 55 } },
   "minimal-dark": { primary: { h: 0,   s: 0,  l: 80 }, accent: { h: 0,   s: 0,  l: 60 } },
   monochrome:     { primary: { h: 0,   s: 0,  l: 45 }, accent: { h: 0,   s: 0,  l: 45 } },
+  lavender:       { primary: { h: 270, s: 45, l: 62 }, accent: { h: 285, s: 40, l: 65 } },
+  mint:           { primary: { h: 160, s: 45, l: 46 }, accent: { h: 145, s: 40, l: 50 } },
+  plum:           { primary: { h: 300, s: 35, l: 55 }, accent: { h: 290, s: 30, l: 50 } },
+  coral:          { primary: { h: 10,  s: 70, l: 60 }, accent: { h: 22,  s: 65, l: 60 } },
+  slate:          { primary: { h: 215, s: 15, l: 55 }, accent: { h: 210, s: 12, l: 50 } },
+  blush:          { primary: { h: 330, s: 50, l: 72 }, accent: { h: 320, s: 42, l: 68 } },
+  cocoa:          { primary: { h: 25,  s: 30, l: 45 }, accent: { h: 20,  s: 25, l: 42 } },
+  lagoon:         { primary: { h: 185, s: 55, l: 48 }, accent: { h: 175, s: 45, l: 50 } },
 };
 
 // Each preset's INTENDED default mode (its "home" appearance) — the mode
@@ -144,6 +181,8 @@ const THEME_DEFAULT_MODE: Record<ThemeColor, ColorMode> = {
   midnight: "dark", graphite: "dark", ocean: "light", forest: "light",
   arctic: "light", amber: "light", rose: "light",
   "minimal-light": "light", "minimal-dark": "dark", monochrome: "dark",
+  lavender: "light", mint: "light", plum: "dark", coral: "light",
+  slate: "dark", blush: "light", cocoa: "dark", lagoon: "dark",
 };
 
 const swatchPreview = (id: ThemeColor): string => {
@@ -173,6 +212,14 @@ export const THEMES: Array<{
   { id: "minimal-light",   name: "Minimal Light", emoji: "⚪", preview: swatchPreview("minimal-light"),   accent: swatchAccent("minimal-light"),   dark: false },
   { id: "minimal-dark",    name: "Minimal Dark",  emoji: "⚫", preview: swatchPreview("minimal-dark"),    accent: swatchAccent("minimal-dark"),    dark: true  },
   { id: "monochrome",      name: "Monochrome",    emoji: "◐",  preview: swatchPreview("monochrome"),      accent: swatchAccent("monochrome"),      dark: THEME_DEFAULT_MODE.monochrome === "dark" },
+  { id: "lavender",        name: "Lavender",      emoji: "💜", preview: swatchPreview("lavender"),        accent: swatchAccent("lavender"),        dark: THEME_DEFAULT_MODE.lavender === "dark" },
+  { id: "mint",            name: "Mint",          emoji: "🍃", preview: swatchPreview("mint"),            accent: swatchAccent("mint"),            dark: THEME_DEFAULT_MODE.mint === "dark" },
+  { id: "plum",            name: "Plum",          emoji: "🍇", preview: swatchPreview("plum"),            accent: swatchAccent("plum"),            dark: THEME_DEFAULT_MODE.plum === "dark" },
+  { id: "coral",           name: "Coral",         emoji: "🪸", preview: swatchPreview("coral"),           accent: swatchAccent("coral"),           dark: THEME_DEFAULT_MODE.coral === "dark" },
+  { id: "slate",           name: "Slate",         emoji: "🪨", preview: swatchPreview("slate"),           accent: swatchAccent("slate"),           dark: THEME_DEFAULT_MODE.slate === "dark" },
+  { id: "blush",           name: "Blush",         emoji: "🌷", preview: swatchPreview("blush"),           accent: swatchAccent("blush"),           dark: THEME_DEFAULT_MODE.blush === "dark" },
+  { id: "cocoa",           name: "Cocoa",         emoji: "🍫", preview: swatchPreview("cocoa"),           accent: swatchAccent("cocoa"),           dark: THEME_DEFAULT_MODE.cocoa === "dark" },
+  { id: "lagoon",          name: "Lagoon",        emoji: "🌴", preview: swatchPreview("lagoon"),          accent: swatchAccent("lagoon"),          dark: THEME_DEFAULT_MODE.lagoon === "dark" },
 ];
 
 // ─── IndexedDB icon store ────────────────────────────────────────────────────
@@ -181,44 +228,8 @@ export const THEMES: Array<{
 // photo as base64 is 2–5MB — one image can exhaust the entire budget, silently
 // corrupting all other stored data (settings, pins, E2E keys) with no error shown.
 // IndexedDB has no practical size limit and is the correct store for binary blobs.
-const IDB_DB   = "duo-assets";
-const IDB_STORE = "blobs";
-
-const idbOpen = (): Promise<IDBDatabase> =>
-  new Promise((res, rej) => {
-    const req = indexedDB.open(IDB_DB, 1);
-    req.onupgradeneeded = () => req.result.createObjectStore(IDB_STORE);
-    req.onsuccess = () => res(req.result);
-    req.onerror   = () => rej(req.error);
-  });
-
-const idbGet = async (key: string): Promise<string | null> => {
-  try {
-    const db  = await idbOpen();
-    const tx  = db.transaction(IDB_STORE, "readonly");
-    return await new Promise((res) => {
-      const req = tx.objectStore(IDB_STORE).get(key);
-      req.onsuccess = () => res(req.result ?? null);
-      req.onerror   = () => res(null);
-    });
-  } catch { return null; }
-};
-
-const idbSet = async (key: string, value: string): Promise<void> => {
-  try {
-    const db = await idbOpen();
-    const tx = db.transaction(IDB_STORE, "readwrite");
-    tx.objectStore(IDB_STORE).put(value, key);
-  } catch { /* noop — idb unavailable in some private modes */ }
-};
-
-const idbDelete = async (key: string): Promise<void> => {
-  try {
-    const db = await idbOpen();
-    const tx = db.transaction(IDB_STORE, "readwrite");
-    tx.objectStore(IDB_STORE).delete(key);
-  } catch { /* noop */ }
-};
+// (idbGet/idbSet/idbDelete now live in src/lib/idbStore.ts, shared with the
+// per-app icon config store used by Icon Studio.)
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const ThemeProvider = ({ children }: { children: ReactNode }) => {
@@ -227,11 +238,40 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
   const [theme, setThemeState] = useState<ThemeColor>(() =>
     resolveThemeId(storage.get("duo-theme"))
   );
-  const [colorMode, setColorModeState] = useState<ColorMode>(() => {
+  // The manual light/dark fallback — used directly when themeMode is
+  // "light"/"dark", and as a fallback if "auto" can't resolve.
+  const manualColorMode = (): ColorMode => {
     const saved = storage.get("duo-color-mode");
     if (saved === "light" || saved === "dark") return saved;
     return THEME_DEFAULT_MODE[resolveThemeId(storage.get("duo-theme"))];
+  };
+
+  const [themeMode, setThemeModeState] = useState<ThemeModePreference>(() => {
+    const saved = storage.get("duo-theme-mode");
+    if (saved === "light" || saved === "dark" || saved === "auto" || saved === "schedule" || saved === "dynamic") return saved;
+    // No explicit preference saved yet. If this person already has a manual
+    // duo-color-mode from before adaptive theming existed, respect it as-is
+    // so nothing changes underneath an existing user. Brand-new installs
+    // default to "auto" (follow system light/dark), matching what most
+    // people expect out of the box.
+    return storage.get("duo-color-mode") ? manualColorMode() : "auto";
   });
+  const [scheduleDarkStart, setScheduleDarkStart] = useState<string>(() => storage.get("duo-schedule-start") || "19:00");
+  const [scheduleDarkEnd, setScheduleDarkEnd] = useState<string>(() => storage.get("duo-schedule-end") || "07:00");
+
+  const [colorMode, setColorModeState] = useState<ColorMode>(() =>
+    resolveColorMode(themeMode, { manualFallback: manualColorMode(), scheduleDarkStart, scheduleDarkEnd })
+  );
+
+  // Drives periodic recomputation for "schedule" (binary flip check) and
+  // "dynamic" (continuous token re-blend) modes — both need to notice time
+  // passing even with no other state change to naturally trigger it.
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    if (themeMode !== "schedule" && themeMode !== "dynamic") return;
+    const id = setInterval(() => setTick(t => t + 1), 60_000);
+    return () => clearInterval(id);
+  }, [themeMode]);
   const [chatWallpaper, setChatWallpaperState] = useState<string | null>(() =>
     storage.get("duo-wallpaper") || null
   );
@@ -272,15 +312,59 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
   // Apply theme CSS variables via the derivation engine (always a complete
   // palette, for whichever colorMode is active). Re-apply any active custom
   // theme override on top afterward so it persists across reloads/switches.
+  // Skip the view-transition crossfade on the very first apply (app boot) —
+  // there's nothing to fade *from* yet, so it would just be a pointless
+  // flash. Only subsequent theme/mode switches get the animated crossfade.
+  const hasAppliedOnce = useRef(false);
   useEffect(() => {
     const identity = THEME_IDENTITIES[theme] ?? THEME_IDENTITIES.midnight;
-    applyTokens(deriveTokens(identity, colorMode));
-    document.documentElement.classList.toggle("dark", colorMode === "dark");
-    // Lazy-import to avoid a circular dep at module load.
-    import("@/lib/customThemes").then(({ restoreActiveCustomTheme }) => {
-      restoreActiveCustomTheme();
-    });
-  }, [theme, colorMode]);
+    const apply = () => {
+      if (themeMode === "dynamic") {
+        applyTokens(deriveDynamicTokens(identity, new Date()));
+      } else {
+        applyTokens(deriveTokens(identity, colorMode));
+      }
+      document.documentElement.classList.toggle("dark", colorMode === "dark");
+      // Lazy-import to avoid a circular dep at module load.
+      import("@/lib/customThemes").then(({ restoreActiveCustomTheme }) => {
+        restoreActiveCustomTheme();
+      });
+    };
+    // View Transitions API: smooth crossfade between the old and new palette
+    // instead of every CSS custom property snapping instantly. Feature-
+    // detected — iOS WebView and older Android WebViews don't support it,
+    // so they just get the same instant swap as before, not a broken one.
+    const supportsViewTransition = hasAppliedOnce.current
+      && typeof document !== "undefined"
+      && "startViewTransition" in document
+      && !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (supportsViewTransition) {
+      (document as any).startViewTransition(apply);
+    } else {
+      apply();
+    }
+    hasAppliedOnce.current = true;
+  }, [theme, colorMode, themeMode, tick]);
+
+  // Keep the binary colorMode classification (used for the dark class,
+  // wallpaper light/dark pairs, etc) in sync with themeMode — live for
+  // "auto" via a matchMedia listener, and on each `tick` for "schedule" and
+  // "dynamic".
+  useEffect(() => {
+    setColorModeState(resolveColorMode(themeMode, {
+      manualFallback: manualColorMode(), scheduleDarkStart, scheduleDarkEnd,
+    }));
+  }, [themeMode, scheduleDarkStart, scheduleDarkEnd, tick]);
+
+  useEffect(() => {
+    if (themeMode !== "auto" || typeof window === "undefined" || !window.matchMedia) return;
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const handler = () => setColorModeState(resolveColorMode(themeMode, {
+      manualFallback: manualColorMode(), scheduleDarkStart, scheduleDarkEnd,
+    }));
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, [themeMode, scheduleDarkStart, scheduleDarkEnd]);
 
   const setTheme = (t: ThemeColor) => {
     setThemeState(t);
@@ -296,8 +380,34 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
   const setColorMode = (mode: ColorMode) => {
     setColorModeState(mode);
     storage.set("duo-color-mode", mode);
+    setThemeModeState(mode);
+    storage.set("duo-theme-mode", mode);
   };
+  // Manual toggle breaks out of auto/schedule/dynamic into an explicit
+  // choice — the same behavior most OSes use when you flip dark mode by hand.
   const toggleColorMode = () => setColorMode(colorMode === "dark" ? "light" : "dark");
+
+  const setThemeMode = (mode: ThemeModePreference) => {
+    setThemeModeState(mode);
+    storage.set("duo-theme-mode", mode);
+    if (mode === "light" || mode === "dark") storage.set("duo-color-mode", mode);
+    // Picking Dynamic links the wallpaper to it too — the whole point is
+    // that chrome *and* wallpaper drift through the day together, not just
+    // one or the other. Only auto-select it if nothing else is already
+    // chosen, so it doesn't silently override a wallpaper the person picked
+    // on purpose.
+    if (mode === "dynamic" && !storage.get("duo-wallpaper")) {
+      setChatWallpaperState("w-dynamic-sky");
+      storage.set("duo-wallpaper", "w-dynamic-sky");
+    }
+  };
+
+  const setScheduleTimes = (start: string, end: string) => {
+    setScheduleDarkStart(start);
+    setScheduleDarkEnd(end);
+    storage.set("duo-schedule-start", start);
+    storage.set("duo-schedule-end", end);
+  };
 
   // Partner theme sync via Supabase realtime
   // Fix #Bug2: use a ref to capture the channel so the React cleanup function
@@ -451,6 +561,8 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
     <ThemeContext.Provider value={{
       theme, setTheme,
       colorMode, setColorMode, toggleColorMode,
+      themeMode, setThemeMode,
+      scheduleDarkStart, scheduleDarkEnd, setScheduleTimes,
       chatWallpaper, setChatWallpaper,
       appIcon, setAppIcon,
       appName, setAppName,

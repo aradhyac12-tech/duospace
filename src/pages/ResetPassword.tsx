@@ -100,7 +100,7 @@ const ResetPassword = () => {
           <Lock className="h-12 w-12 text-muted-foreground mx-auto" />
           <h1 className="text-xl font-semibold">Invalid reset link</h1>
           <p className="text-sm text-muted-foreground">This link is expired or invalid. Request a new password reset.</p>
-          <Button onClick={() => navigate("/auth")} className="rounded-xl bg-foreground text-background">Back to Sign In</Button>
+          <Button onClick={() => navigate("/auth")} className="rounded-xl bg-primary text-primary-foreground">Back to Sign In</Button>
         </motion.div>
       </div>
     );
@@ -126,7 +126,7 @@ const ResetPassword = () => {
               placeholder="Repeat password" className="h-11 rounded-xl bg-card border-border" required />
           </div>
           <Button type="submit" disabled={loading}
-            className="w-full h-11 rounded-xl bg-foreground text-background hover:bg-foreground/90 text-sm font-medium">
+            className="w-full h-11 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 text-sm font-medium">
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Update Password"}
           </Button>
         </form>

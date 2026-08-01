@@ -9,7 +9,16 @@
  * the stored value isn't a known ID (an old raw CSS string saved before
  * this change), it's returned as-is so existing selections don't break —
  * they just won't auto-adapt until the user picks a wallpaper again.
+ *
+ * One entry, "w-dynamic-sky", is special: instead of a static light/dark
+ * pair it's a living gradient computed from the current time of day (see
+ * dynamicSky.ts) — the same idea as Apple's Dynamic wallpaper. Its
+ * light/dark fields below are only fallback previews for the swatch in the
+ * wallpaper picker; the actual chat background always calls getSkyGradient()
+ * live instead of reading these two strings.
  */
+
+import { getSkyGradient } from "./dynamicSky";
 
 export interface Wallpaper {
   id: string;
@@ -17,9 +26,14 @@ export interface Wallpaper {
   category: string;
   light: string;
   dark: string;
+  /** True for wallpapers whose color continuously depends on the current time — see dynamicSky.ts. */
+  live?: boolean;
 }
 
 export const WALLPAPERS: Wallpaper[] = [
+  { id: "w-dynamic-sky", name: "Dynamic Sky", category: "Live", live: true,
+    light: `linear-gradient(180deg, hsl(205 70% 58%) 0%, hsl(200 40% 88%) 100%)`,
+    dark: `linear-gradient(180deg, hsl(230 45% 8%) 0%, hsl(220 35% 14%) 100%)` },
   { id: "w-minimal", name: "Minimal", category: "Minimal", light: `linear-gradient(180deg, hsl(30,15%,97%) 0%, hsl(30,10%,94%) 100%), url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%22180%22%20height%3D%22180%22%3E%3Cfilter%20id%3D%22n%22%3E%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%220.9%22%20numOctaves%3D%222%22%20stitchTiles%3D%22stitch%22/%3E%3CfeColorMatrix%20type%3D%22saturate%22%20values%3D%220%22/%3E%3C/filter%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20filter%3D%22url%28%2523n%29%22%20opacity%3D%220.05%22/%3E%3C/svg%3E")`, dark: `linear-gradient(180deg, hsl(230,15%,10%) 0%, hsl(230,12%,7%) 100%), url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%22180%22%20height%3D%22180%22%3E%3Cfilter%20id%3D%22n%22%3E%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%220.9%22%20numOctaves%3D%222%22%20stitchTiles%3D%22stitch%22/%3E%3CfeColorMatrix%20type%3D%22saturate%22%20values%3D%220%22/%3E%3C/filter%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20filter%3D%22url%28%2523n%29%22%20opacity%3D%220.08%22/%3E%3C/svg%3E")` },
   { id: "w-sunset", name: "Sunset", category: "Soft Gradient", light: `linear-gradient(135deg, hsl(20,70%,90%) 0%, hsl(345,55%,85%) 100%)`, dark: `linear-gradient(135deg, hsl(345,40%,16%) 0%, hsl(20,35%,13%) 100%)` },
   { id: "w-horizon", name: "Horizon", category: "Soft Gradient", light: `linear-gradient(135deg, hsl(200,55%,88%) 0%, hsl(230,45%,80%) 100%)`, dark: `linear-gradient(135deg, hsl(230,40%,14%) 0%, hsl(210,35%,10%) 100%)` },
@@ -30,9 +44,19 @@ export const WALLPAPERS: Wallpaper[] = [
   { id: "w-dots", name: "Dot Grid", category: "Minimal Shapes", light: `radial-gradient(circle, hsl(30,10%,75%) 1px, transparent 1.2px) 0 0/16px 16px, hsl(30,15%,97%)`, dark: `radial-gradient(circle, hsl(220,10%,30%) 1px, transparent 1.2px) 0 0/16px 16px, hsl(230,15%,9%)` },
   { id: "w-forest", name: "Forest", category: "Nature", light: `linear-gradient(160deg, hsl(150,25%,90%) 0%, hsl(155,20%,78%) 100%)`, dark: `linear-gradient(160deg, hsl(155,30%,10%) 0%, hsl(150,25%,6%) 100%)` },
   { id: "w-ocean", name: "Ocean", category: "Nature", light: `linear-gradient(160deg, hsl(195,50%,90%) 0%, hsl(200,45%,80%) 100%)`, dark: `linear-gradient(160deg, hsl(195,45%,20%) 0%, hsl(210,50%,10%) 100%)` },
+  { id: "w-lavender-mist", name: "Lavender Mist", category: "Soft Gradient", light: `linear-gradient(135deg, hsl(265,45%,92%) 0%, hsl(300,35%,88%) 100%)`, dark: `linear-gradient(135deg, hsl(265,35%,14%) 0%, hsl(285,30%,10%) 100%)` },
+  { id: "w-peach", name: "Peach", category: "Soft Gradient", light: `linear-gradient(135deg, hsl(24,80%,90%) 0%, hsl(350,65%,88%) 100%)`, dark: `linear-gradient(135deg, hsl(20,40%,15%) 0%, hsl(350,35%,12%) 100%)` },
+  { id: "w-cotton-candy", name: "Cotton Candy", category: "Mesh Gradient", light: `radial-gradient(at 20% 20%, hsl(200,70%,88%) 0%, transparent 55%), radial-gradient(at 80% 25%, hsl(320,65%,90%) 0%, transparent 55%), radial-gradient(at 50% 95%, hsl(260,55%,90%) 0%, transparent 55%), hsl(30,20%,97%)`, dark: `radial-gradient(at 20% 20%, hsl(200,60%,22%) 0%, transparent 55%), radial-gradient(at 80% 25%, hsl(320,55%,22%) 0%, transparent 55%), radial-gradient(at 50% 95%, hsl(260,50%,20%) 0%, transparent 55%), hsl(230,20%,7%)` },
+  { id: "w-midnight-space", name: "Midnight Space", category: "Space", light: `radial-gradient(1.2px 1.2px at 20px 30px, rgba(90,90,120,0.4) 100%, transparent), radial-gradient(1px 1px at 80px 90px, rgba(90,90,120,0.35) 100%, transparent), radial-gradient(1.4px 1.4px at 140px 50px, rgba(90,90,120,0.4) 100%, transparent) 0 0/180px 180px, linear-gradient(180deg, hsl(225,30%,90%) 0%, hsl(220,20%,82%) 100%)`, dark: `radial-gradient(1.6px 1.6px at 20px 30px, #fff 100%, transparent), radial-gradient(1.2px 1.2px at 80px 90px, #fff 100%, transparent), radial-gradient(1.8px 1.8px at 140px 50px, #fff 100%, transparent), radial-gradient(1.2px 1.2px at 100px 150px, #fff 100%, transparent) 0 0/180px 180px, radial-gradient(circle at 50% 0%, hsl(250,40%,14%) 0%, hsl(230,45%,5%) 70%)` },
+  { id: "w-golden-hour", name: "Golden Hour", category: "Soft Gradient", light: `linear-gradient(160deg, hsl(42,85%,88%) 0%, hsl(28,75%,80%) 100%)`, dark: `linear-gradient(160deg, hsl(30,45%,16%) 0%, hsl(20,40%,9%) 100%)` },
+  { id: "w-rainforest", name: "Rainforest", category: "Nature", light: `radial-gradient(at 10% 10%, hsl(140,45%,86%) 0%, transparent 55%), radial-gradient(at 90% 90%, hsl(90,40%,84%) 0%, transparent 55%), hsl(120,25%,95%)`, dark: `radial-gradient(at 10% 10%, hsl(150,45%,16%) 0%, transparent 55%), radial-gradient(at 90% 90%, hsl(100,40%,14%) 0%, transparent 55%), hsl(150,20%,6%)` },
+  { id: "w-steel", name: "Steel", category: "Minimal", light: `linear-gradient(160deg, hsl(215,12%,92%) 0%, hsl(215,10%,86%) 100%)`, dark: `linear-gradient(160deg, hsl(215,15%,14%) 0%, hsl(215,12%,9%) 100%)` },
+  { id: "w-coral-reef", name: "Coral Reef", category: "Aurora", light: `radial-gradient(at 15% 10%, hsl(10,70%,88%) 0%, transparent 50%), radial-gradient(at 85% 20%, hsl(190,60%,86%) 0%, transparent 50%), radial-gradient(at 50% 95%, hsl(45,70%,86%) 0%, transparent 55%), hsl(30,20%,97%)`, dark: `radial-gradient(at 15% 10%, hsl(10,70%,22%) 0%, transparent 50%), radial-gradient(at 85% 20%, hsl(190,60%,18%) 0%, transparent 50%), radial-gradient(at 50% 95%, hsl(45,60%,16%) 0%, transparent 55%), hsl(230,20%,6%)` },
+  { id: "w-twilight", name: "Twilight", category: "Aurora", light: `linear-gradient(160deg, hsl(255,45%,88%) 0%, hsl(290,40%,84%) 45%, hsl(20,55%,86%) 100%)`, dark: `linear-gradient(160deg, hsl(255,40%,12%) 0%, hsl(280,35%,10%) 45%, hsl(15,35%,10%) 100%)` },
 ];
 export function resolveWallpaperStyle(idOrLegacy: string | null, mode: "light" | "dark"): string | null {
   if (!idOrLegacy) return null;
+  if (idOrLegacy === "w-dynamic-sky") return getSkyGradient();
   const wp = WALLPAPERS.find(w => w.id === idOrLegacy);
   if (wp) return mode === "dark" ? wp.dark : wp.light;
   // Legacy raw CSS string from before wallpapers were mode-paired.

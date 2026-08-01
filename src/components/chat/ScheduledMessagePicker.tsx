@@ -87,7 +87,7 @@ const ScheduledMessagePicker = ({ message, onSchedule, onClose }: ScheduledMessa
           onClick={handleCustom}
           disabled={!customDateTime || new Date(customDateTime) > maxDate}
           size="sm"
-          className="h-9 rounded-xl bg-foreground text-background px-3"
+          className="h-9 rounded-xl bg-primary text-primary-foreground px-3"
         >
           <Send className="h-3.5 w-3.5" />
         </Button>

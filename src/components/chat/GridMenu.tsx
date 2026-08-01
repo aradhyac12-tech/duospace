@@ -1,7 +1,7 @@
 import React from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
-import { Image, MapPin, Music, Heart, X, BookOpen, Feather, Clock, Sparkles } from "lucide-react";
+import { Image, MapPin, Music, Heart, BookOpen, Feather, Clock, Sparkles } from "lucide-react";
 import { hapticLight } from "@/lib/haptics";
 import { useLongPress } from "@/hooks/useLongPress";
 
@@ -32,16 +32,17 @@ export const HubButton = ({ onClick, isOpen, onLongPress }: HubButtonProps) => {
       whileTap={{ scale: 0.88 }}
       animate={{
         scale: isOpen ? 1.05 : 1,
-        backgroundColor: isOpen ? "hsl(var(--foreground))" : "hsl(var(--muted))",
+        backgroundColor: isOpen ? "hsl(var(--primary))" : "hsl(var(--muted))",
       }}
       transition={{ type: "spring", stiffness: 380, damping: 22 }}
+      aria-label="Open shared features"
       className="h-10 w-10 rounded-full flex items-center justify-center shrink-0 relative overflow-hidden"
     >
       <motion.div
-        animate={{ rotate: isOpen ? 180 : 0 }}
+        animate={{ rotate: isOpen ? 90 : 0 }}
         transition={{ type: "spring", stiffness: 260, damping: 20 }}
       >
-        <Sparkles className={`h-4 w-4 transition-colors ${isOpen ? "text-background" : "text-foreground"}`} />
+        <Sparkles className={`h-4 w-4 transition-colors ${isOpen ? "text-primary-foreground" : "text-foreground"}`} />
       </motion.div>
     </motion.button>
   );
@@ -63,8 +64,8 @@ const navItems = [
 const GridMenu = ({ onClose, onScheduledMessage, onLoveLetter }: GridMenuProps) => {
   const navigate = useNavigate();
 
-  // Defer navigation until after the close/exit animation so the outgoing
-  // tiles gracefully fly away before the route changes.
+  // Defer navigation until after the close/exit animation so the sheet
+  // gracefully dismisses before the route changes.
   const runThenClose = (fn: () => void) => {
     hapticLight();
     onClose();
@@ -85,55 +86,51 @@ const GridMenu = ({ onClose, onScheduledMessage, onLoveLetter }: GridMenuProps) 
   return (
     <motion.div
       initial={{ opacity: 0 }}
-      animate={{ opacity: 1, backdropFilter: "blur(6px)" }}
-      exit={{ opacity: 0, backdropFilter: "blur(0px)" }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
       transition={{ duration: 0.18 }}
-      className="fixed inset-0 z-50 bg-background/40"
-      onClick={onClose}
+      className="fixed inset-0 z-50 bg-background/50 backdrop-blur-sm flex items-end justify-center"
+      onClick={() => { hapticLight(); onClose(); }}
     >
-      <div className="absolute bottom-[4.25rem] right-3 flex flex-col items-end gap-2" onClick={(e) => e.stopPropagation()}>
-        <motion.button
-          initial={{ opacity: 0, y: 8, scale: 0.9 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: 8, scale: 0.9 }}
-          transition={{ type: "spring", stiffness: 400, damping: 24 }}
-          whileTap={{ scale: 0.9 }}
-          onClick={onClose}
-          className="h-9 w-9 rounded-full bg-card border border-border/50 shadow-lg flex items-center justify-center"
-        >
-          <X className="h-4 w-4 text-muted-foreground" />
-        </motion.button>
+      <motion.div
+        initial={{ y: "100%" }}
+        animate={{ y: 0 }}
+        exit={{ y: "100%" }}
+        transition={{ type: "spring", stiffness: 380, damping: 34 }}
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-md rounded-t-[28px] bg-card/95 backdrop-blur-md border-t border-border/20 pt-2.5 pb-6 safe-bottom"
+        style={{ boxShadow: "var(--shadow-soft)" }}
+      >
+        {/* Drag handle */}
+        <div className="flex justify-center pb-4">
+          <span className="h-1 w-9 rounded-full bg-border" />
+        </div>
 
-        <div className="flex flex-col items-end gap-2">
+        <div className="grid grid-cols-4 gap-x-2 gap-y-5 px-5">
           {allItems.map((item, i) => {
             const Icon = item.icon;
             const isAction = i < actionItems.length;
-            const total = allItems.length;
             return (
               <motion.button
                 key={item.label}
-                initial={{ opacity: 0, x: 40, scale: 0.85 }}
-                animate={{ opacity: 1, x: 0, scale: 1 }}
-                exit={{ opacity: 0, x: 32, scale: 0.85, transition: { delay: (total - 1 - i) * 0.025, duration: 0.14 } }}
-                transition={{ delay: i * 0.035, type: "spring", stiffness: 380, damping: 24 }}
-                whileTap={{ scale: 0.94 }}
-                whileHover={{ x: -2 }}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.02, duration: 0.18 }}
+                whileTap={{ scale: 0.92 }}
                 onClick={item.action}
-                className={`flex items-center gap-3 rounded-full border shadow-lg px-3 py-2 min-w-[148px] ${
-                  isAction
-                    ? "bg-foreground border-foreground/20 text-background"
-                    : "bg-card/95 backdrop-blur-sm border-border/50"
-                }`}
+                className="flex flex-col items-center gap-1.5"
               >
-                <div className={`h-9 w-9 rounded-full flex items-center justify-center shrink-0 ${isAction ? "bg-white/10" : "bg-muted"}`}>
-                  <Icon className={`h-4 w-4 ${isAction ? "text-background" : "text-foreground"}`} />
-                </div>
-                <span className={`text-xs font-medium ${isAction ? "text-background" : "text-foreground"}`}>{item.label}</span>
+                <span className={`h-14 w-14 rounded-2xl flex items-center justify-center backdrop-blur-sm ${
+                  isAction ? "bg-primary/10" : "bg-muted/60"
+                }`}>
+                  <Icon className={`h-[22px] w-[22px] ${isAction ? "text-primary" : "text-foreground/80"}`} />
+                </span>
+                <span className="text-[11px] font-medium text-foreground/80 text-center leading-tight">{item.label}</span>
               </motion.button>
             );
           })}
         </div>
-      </div>
+      </motion.div>
     </motion.div>
   );
 };

@@ -186,12 +186,14 @@ const ThemeStudio = ({ open, onOpenChange }: Props) => {
                 <button key={t.id} onClick={() => selectTheme(t.id)}
                   className={cn(
                     "group h-[70px] rounded-2xl border active:scale-95 transition-all overflow-hidden relative press",
-                    active ? "border-foreground/70 ring-1 ring-foreground/20" : "border-border/60 hover:border-foreground/40",
+                    active ? "border-primary/70 ring-1 ring-primary/20" : "border-border/60 hover:border-primary/40",
                   )}
                   style={{ background: t.preview }}
-                  title={t.name}>
-                  <span className="absolute top-1.5 left-1.5 text-[11px] opacity-80">{t.emoji}</span>
-                  {active && <Check className="absolute top-1.5 right-1.5 h-3 w-3 text-foreground/80" />}
+                  title={t.name}
+                  aria-label={`${t.name} theme${active ? " (selected)" : ""}`}
+                  aria-pressed={active}>
+                  <span className="absolute top-1.5 left-1.5 text-[11px] opacity-80" aria-hidden="true">{t.emoji}</span>
+                  {active && <Check className="absolute top-1.5 right-1.5 h-3 w-3 text-foreground/80" aria-hidden="true" />}
                   <div className="absolute inset-x-1.5 bottom-1.5 flex items-center justify-between">
                     <span className="text-[9px] font-medium truncate px-0.5 opacity-70 group-hover:opacity-100">{t.name}</span>
                     <div className="h-3 w-3 rounded-full shrink-0 shadow-sm" style={{ background: t.accent }} />
@@ -217,7 +219,7 @@ const ThemeStudio = ({ open, onOpenChange }: Props) => {
                   onClick={() => { hapticLight(); applyFontPreset(f.id); setActiveFontId(f.id); }}
                   className={cn(
                     "text-left rounded-2xl px-3 py-2.5 border transition-all press",
-                    active ? "border-foreground/60 bg-foreground/5" : "border-border/60 hover:border-foreground/30",
+                    active ? "border-primary/60 bg-primary/5" : "border-border/60 hover:border-primary/30",
                   )}
                 >
                   <p className="text-sm truncate" style={{ fontFamily: f.heading }}>Aa · {f.name.split(" · ")[0]}</p>
@@ -245,7 +247,7 @@ const ThemeStudio = ({ open, onOpenChange }: Props) => {
                   onClick={() => { hapticLight(); applyTextDensity(d.id); setActiveDensityId(d.id); }}
                   className={cn(
                     "text-left rounded-2xl px-3 py-2.5 border transition-all press",
-                    active ? "border-foreground/60 bg-foreground/5" : "border-border/60 hover:border-foreground/30",
+                    active ? "border-primary/60 bg-primary/5" : "border-border/60 hover:border-primary/30",
                   )}
                 >
                   <p className="text-sm font-medium truncate" style={{ fontSize: `${13 * d.scale}px` }}>{d.name}</p>
@@ -321,7 +323,7 @@ const ThemeStudio = ({ open, onOpenChange }: Props) => {
                     <p className="text-xs flex-1 truncate">{t.name}</p>
                     {activeId === t.id && <Check className="h-3.5 w-3.5 text-primary" />}
                     <button onClick={() => apply(t)} className="text-[10px] px-2 py-1 rounded-full bg-muted">Apply</button>
-                    <button onClick={() => remove(t.id)} className="text-muted-foreground active:scale-90"><Trash2 className="h-3.5 w-3.5" /></button>
+                    <button onClick={() => remove(t.id)} aria-label={`Delete ${t.name}`} className="text-muted-foreground active:scale-90"><Trash2 className="h-3.5 w-3.5" aria-hidden="true" /></button>
                   </motion.div>
                 ))}
               </AnimatePresence>

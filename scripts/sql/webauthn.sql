@@ -1,5 +1,5 @@
 -- WebAuthn / passkey support.
--- Apply to Supabase (external project povhwwcswvfihmcdqgyv) via SQL editor or
+-- Apply to Supabase (external project jzlpelxwzjjpddqcrtpu) via SQL editor or
 -- `supabase db push` — this file sits outside supabase/migrations/ on purpose.
 
 -- ── Credentials ──────────────────────────────────────────────────────────

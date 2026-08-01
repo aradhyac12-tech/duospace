@@ -57,7 +57,7 @@ export function OnboardingTooltip({ id, text, emoji = "💡", side = "bottom" }:
           transition={{ duration: 0.15 }}
           className={`absolute z-50 ${positionClass} w-max max-w-[220px]`}
         >
-          <div className="bg-foreground text-background rounded-xl px-3 py-2 shadow-xl flex items-start gap-2">
+          <div className="bg-primary text-primary-foreground rounded-xl px-3 py-2 shadow-xl flex items-start gap-2">
             <span className="text-sm shrink-0">{emoji}</span>
             <p className="text-[11px] leading-relaxed flex-1">{text}</p>
             <button

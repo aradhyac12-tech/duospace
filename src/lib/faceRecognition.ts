@@ -14,6 +14,7 @@
  */
 
 import { FilesetResolver, FaceLandmarker, type FaceLandmarkerResult } from "@mediapipe/tasks-vision";
+import { faceFromLandmarks } from "@/lib/faceMath";
 
 const MODEL_URL =
   "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task";
@@ -46,82 +47,15 @@ export const getLandmarker = async (maxFaces = 5): Promise<FaceLandmarker> => {
   return loading;
 };
 
-/** Detected face wrapper used throughout the peek pipeline. */
-export interface DetectedFace {
-  embedding: Float32Array;     // 478*3 normalized landmarks
-  /** Bounding box in *normalized* coords [0..1] from min/max landmarks. */
-  bbox: { x: number; y: number; w: number; h: number };
-  /** Approximate area in normalized units — used to ignore tiny far-away faces. */
-  area: number;
-  /** Average Eye-Aspect-Ratio (EAR) — used for blink-based liveness. */
-  ear: number;
-  /** Yaw / pitch proxy from nose-vs-eye-center delta — used for movement liveness. */
-  pose: { yaw: number; pitch: number };
-}
+/** Detected face wrapper used throughout the peek pipeline. Same shape the
+ *  detection worker produces — see lib/faceMath.ts for the shared math. */
+export type DetectedFace = import("@/lib/faceMath").DetectedFaceRaw;
 
-/**
- * Extract a normalized embedding from one face's landmark list.
- * Centering on landmark 1 (nose tip) + scaling by distance(left-eye, right-eye)
- * makes the vector translation/scale invariant. Identity-stable across
- * head poses within ~30°.
- */
-const buildEmbedding = (landmarks: { x: number; y: number; z: number }[]): Float32Array => {
-  // Landmark indices for canonical FaceMesh:
-  // 1 = nose tip, 33 = left eye outer, 263 = right eye outer
-  const nose = landmarks[1];
-  const le   = landmarks[33];
-  const re   = landmarks[263];
-  const dx   = re.x - le.x;
-  const dy   = re.y - le.y;
-  const dz   = re.z - le.z;
-  const scale = Math.hypot(dx, dy, dz) || 1;
-
-  const out = new Float32Array(landmarks.length * 3);
-  for (let i = 0; i < landmarks.length; i++) {
-    out[i * 3]     = (landmarks[i].x - nose.x) / scale;
-    out[i * 3 + 1] = (landmarks[i].y - nose.y) / scale;
-    out[i * 3 + 2] = (landmarks[i].z - nose.z) / scale;
-  }
-  return out;
-};
-
-const bboxFromLandmarks = (landmarks: { x: number; y: number }[]) => {
-  let minX = 1, minY = 1, maxX = 0, maxY = 0;
-  for (const p of landmarks) {
-    if (p.x < minX) minX = p.x;
-    if (p.x > maxX) maxX = p.x;
-    if (p.y < minY) minY = p.y;
-    if (p.y > maxY) maxY = p.y;
-  }
-  const w = maxX - minX;
-  const h = maxY - minY;
-  return { x: minX, y: minY, w, h, area: w * h };
-};
-
-// Eye landmark indices (FaceMesh canonical):
-// Left eye:  outer 33, inner 133, top 159, bottom 145
-// Right eye: outer 263, inner 362, top 386, bottom 374
-const computeEAR = (lm: { x: number; y: number }[]): number => {
-  const dist = (a: { x: number; y: number }, b: { x: number; y: number }) =>
-    Math.hypot(a.x - b.x, a.y - b.y);
-  const leftEAR  = dist(lm[159], lm[145]) / (dist(lm[33], lm[133])  || 1);
-  const rightEAR = dist(lm[386], lm[374]) / (dist(lm[263], lm[362]) || 1);
-  return (leftEAR + rightEAR) / 2;
-};
-
-// Coarse pose proxy — yaw from nose vs midpoint of outer eyes; pitch from
-// nose vs midpoint of (forehead 10) and (chin 152). Good enough for
-// "did the head move at all" liveness, no full PnP needed.
-const computePose = (lm: { x: number; y: number }[]): { yaw: number; pitch: number } => {
-  const nose = lm[1];
-  const eyeMidX = (lm[33].x + lm[263].x) / 2;
-  const yaw = nose.x - eyeMidX;
-  const vertMidY = (lm[10].y + lm[152].y) / 2;
-  const pitch = nose.y - vertMidY;
-  return { yaw, pitch };
-};
-
-/** Run FaceLandmarker on a video/image frame and return per-face embeddings. */
+/** Run FaceLandmarker on a video/image frame and return per-face embeddings.
+ *  Main-thread path — used by enrollment (still image sources) and as the
+ *  fallback when the peek-guard Web Worker pipeline isn't available. The
+ *  hot path (usePeekDetection) normally runs this same math off-thread via
+ *  faceDetection.worker.ts / faceWorkerClient.ts instead of calling this. */
 export const detectFaces = async (
   source: HTMLVideoElement | HTMLImageElement | HTMLCanvasElement,
   ts = performance.now(),
@@ -133,15 +67,8 @@ export const detectFaces = async (
       : lm.detect(source);
   const faces: DetectedFace[] = [];
   for (const lmList of result.faceLandmarks ?? []) {
-    if (!lmList || lmList.length < 400) continue; // need enough points for EAR/pose
-    const bb = bboxFromLandmarks(lmList);
-    faces.push({
-      embedding: buildEmbedding(lmList as any),
-      bbox: { x: bb.x, y: bb.y, w: bb.w, h: bb.h },
-      area: bb.area,
-      ear: computeEAR(lmList as any),
-      pose: computePose(lmList as any),
-    });
+    const face = faceFromLandmarks(lmList as any);
+    if (face) faces.push(face);
   }
   return faces;
 };
@@ -199,13 +126,35 @@ export interface OwnerProfile {
   embeddings: number[][]; // each = 478*3 floats
   enrolledAt: number;
   count: number;
+  /**
+   * Worst-case (minimum) pairwise cosine similarity between the owner's own
+   * enrolled samples. Enrollment now requires real yaw diversity, so this is
+   * a genuine measure of "how much does MY face's match score naturally
+   * drop across realistic angles" — not a guess. Used to personalize the
+   * peek-guard match threshold instead of applying one static number to
+   * every face shape/lighting condition. Undefined for profiles saved
+   * before this field existed (falls back to the configured threshold).
+   */
+  selfSimFloor?: number;
 }
 
 export const saveOwnerProfile = async (embeddings: Float32Array[]): Promise<void> => {
+  let selfSimFloor: number | undefined;
+  if (embeddings.length >= 2) {
+    let min = 1;
+    for (let i = 0; i < embeddings.length; i++) {
+      for (let j = i + 1; j < embeddings.length; j++) {
+        const s = cosineSim(embeddings[i], embeddings[j]);
+        if (s < min) min = s;
+      }
+    }
+    selfSimFloor = min;
+  }
   const profile: OwnerProfile = {
     embeddings: embeddings.map((e) => Array.from(e)),
     enrolledAt: Date.now(),
     count: embeddings.length,
+    selfSimFloor,
   };
   await idbSet(KEY, JSON.stringify(profile));
 };
@@ -218,13 +167,39 @@ export const loadOwnerProfile = async (): Promise<OwnerProfile | null> => {
 
 export const clearOwnerProfile = async (): Promise<void> => idbDelete(KEY);
 
-/** Best similarity between candidate and any enrolled owner embedding. */
+/**
+ * Match score for a candidate face against the enrolled owner. Uses the
+ * average of the top-2 similarities (rather than a single best-of-N) so one
+ * unusually generic or unusually noisy enrolled sample can't single-handedly
+ * decide the match — the candidate has to genuinely resemble more than one
+ * captured angle.
+ */
 export const matchAgainstOwner = (candidate: Float32Array, owner: OwnerProfile): number => {
-  let best = 0;
+  const sims: number[] = [];
   for (const arr of owner.embeddings) {
     const ref = arr instanceof Float32Array ? arr : new Float32Array(arr);
-    const s = cosineSim(candidate, ref);
-    if (s > best) best = s;
+    sims.push(cosineSim(candidate, ref));
   }
-  return best;
+  if (sims.length === 0) return 0;
+  sims.sort((a, b) => b - a);
+  const top = sims.slice(0, Math.min(2, sims.length));
+  return top.reduce((a, b) => a + b, 0) / top.length;
+};
+
+/** Absolute floor — never treat anything below this as "possibly the owner",
+ *  regardless of how variable the owner's own enrollment turned out to be. */
+const ABSOLUTE_MIN_MATCH_THRESHOLD = 0.55;
+const SELF_SIM_MARGIN = 0.06;
+
+/**
+ * Personalizes the match threshold using real enrollment data instead of one
+ * static number for everyone: never looser than ABSOLUTE_MIN_MATCH_THRESHOLD,
+ * never stricter than the user's configured threshold (that stays a hard
+ * ceiling — this only ever relaxes toward the owner's own measured
+ * variability, it never overrides the user's chosen security level upward).
+ */
+export const getAdaptiveMatchThreshold = (owner: OwnerProfile | null, configuredThreshold: number): number => {
+  if (!owner?.selfSimFloor) return configuredThreshold;
+  const personalized = owner.selfSimFloor - SELF_SIM_MARGIN;
+  return Math.min(configuredThreshold, Math.max(ABSOLUTE_MIN_MATCH_THRESHOLD, personalized));
 };

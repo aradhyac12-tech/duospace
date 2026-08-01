@@ -17,6 +17,7 @@ import QRSignInDisplay from "@/components/auth/QRSignInDisplay";
 import PasskeyLogin from "@/components/auth/PasskeyLogin";
 import { logInfo, logWarn, logError, newTraceId } from "@/lib/telemetry";
 import { cleanAuthCallbackUrl, completeAuthCallback, getPostAuthPath, hasAuthCallback, parseAuthCallbackUrl } from "@/lib/auth-callback";
+import { hapticLight, hapticMedium } from "@/lib/haptics";
 
 // Structured-logging helpers for the auth surface.
 // We deliberately log: request_id (traceId), origin, redirect_uri, status (ok|error|redirected),
@@ -143,6 +144,17 @@ const Auth = () => {
     if (!isNativePlatform()) return;
     let cancelled = false;
     let sub: { remove: () => void } | undefined;
+    // Guards against duplicate exchangeCodeForSession() calls: Android can
+    // redeliver the same appUrlOpen event (e.g. onNewIntent firing more than
+    // once), and a cold start can hand the same callback URL to BOTH
+    // getLaunchUrl() and the very first appUrlOpen event. A PKCE code is
+    // single-use — a second exchange attempt for the same code fails and
+    // would surface a spurious "Sign in failed" error even though the first
+    // attempt already succeeded. Track which codes we've started exchanging
+    // (module scope isn't needed since this ref only needs to survive this
+    // component instance) and short-circuit any repeat.
+    const processedCodes = new Set<string>();
+    let inFlight = false;
 
     const closeInAppBrowser = async () => {
       try {
@@ -178,6 +190,12 @@ const Auth = () => {
             has_error: Boolean(errorDesc),
           }, traceId);
 
+          if (code || errorDesc || parsed.get("access_token")) {
+            logInfo("auth.deeplink", "callback detected", {
+              request_id: traceId, source, kind: code ? "code" : errorDesc ? "error" : "implicit_tokens",
+            }, traceId);
+          }
+
           if (errorDesc) {
             logError("auth.deeplink", "provider returned error in deep link", {
               request_id: traceId, error: errorDesc,
@@ -187,10 +205,44 @@ const Auth = () => {
             return;
           }
 
+          const dedupeKey = code ?? url;
+          if (processedCodes.has(dedupeKey)) {
+            logWarn("auth.deeplink", "duplicate callback ignored (already processed)", {
+              request_id: traceId, source, has_code: Boolean(code),
+            }, traceId);
+            await closeInAppBrowser();
+            return;
+          }
+          if (inFlight) {
+            logWarn("auth.deeplink", "duplicate callback ignored (exchange already in flight)", {
+              request_id: traceId, source,
+            }, traceId);
+            return;
+          }
+          processedCodes.add(dedupeKey);
+          inFlight = true;
+
           setOauthProcessing(true);
           const t0 = performance.now();
-          const result = await completeAuthCallback(url, traceId);
+          // Timeout so a stalled network request (e.g. right after the
+          // browser->app handoff on flaky mobile connections) can never
+          // leave the user stuck on "Completing sign in" forever.
+          const timeoutMs = 20000;
+          const timeout = new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), timeoutMs));
+          const outcome = await Promise.race([completeAuthCallback(url, traceId), timeout]);
           const duration_ms = Math.round(performance.now() - t0);
+          if (outcome === "timeout") {
+            logError("auth.deeplink", "exchangeCodeForSession timed out", {
+              request_id: traceId, duration_ms, timeout_ms: timeoutMs,
+            }, traceId);
+            if (!cancelled) {
+              toast({ title: "Sign in timed out", description: "Please check your connection and try again.", variant: "destructive" });
+              setOauthProcessing(false);
+            }
+            await closeInAppBrowser();
+            return;
+          }
+          const result = outcome;
           if (!cancelled) {
             if (result.session) {
               logInfo("auth.deeplink", "native session established", {
@@ -218,6 +270,8 @@ const Auth = () => {
             toast({ title: "Sign in failed", description: readableError(err), variant: "destructive" });
             setOauthProcessing(false);
           }
+        } finally {
+          inFlight = false;
         }
         await closeInAppBrowser();
     };
@@ -589,11 +643,11 @@ const Auth = () => {
                 placeholder="you@example.com" className="h-11 rounded-xl bg-card border-border" required autoFocus />
             </div>
             <Button type="submit" disabled={forgotLoading}
-              className="w-full h-11 rounded-xl bg-foreground text-background hover:bg-foreground/90 text-sm font-medium">
+              className="w-full h-11 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 text-sm font-medium">
               {forgotLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Send Reset Link"}
             </Button>
           </form>
-          <button onClick={() => setShowForgot(false)} className="block mx-auto text-sm text-muted-foreground hover:text-foreground transition-colors">
+          <button onClick={() => { hapticLight(); setShowForgot(false); }} className="block mx-auto text-sm text-muted-foreground hover:text-foreground transition-colors">
             Back to Sign In
           </button>
         </motion.div>
@@ -629,7 +683,7 @@ const Auth = () => {
         {/* Social login */}
         <div className="space-y-2">
           <Button
-            onClick={handleGoogleLogin}
+            onClick={() => { hapticMedium(); handleGoogleLogin(); }}
             disabled={googleLoading || oauthProcessing}
             variant="outline"
             className="w-full h-12 rounded-xl gap-3 text-sm font-medium"
@@ -647,7 +701,7 @@ const Auth = () => {
             Continue with Google
           </Button>
           <Button
-            onClick={() => { setQrPanel("scan"); setShowQrScanner(true); }}
+            onClick={() => { hapticMedium(); setQrPanel("scan"); setShowQrScanner(true); }}
             variant="outline"
             className="w-full h-12 rounded-xl gap-3 text-sm font-medium"
           >
@@ -682,10 +736,10 @@ const Auth = () => {
                   placeholder="••••••••" className="h-11 rounded-xl bg-card border-border" required />
               </div>
               <Button type="submit" disabled={loading}
-                className="w-full h-11 rounded-xl bg-foreground text-background hover:bg-foreground/90 text-sm font-medium">
+                className="w-full h-11 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 text-sm font-medium">
                 {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Sign In"}
               </Button>
-              <button type="button" onClick={() => setShowForgot(true)}
+              <button type="button" onClick={() => { hapticLight(); setShowForgot(true); }}
                 className="block mx-auto text-xs text-muted-foreground hover:text-foreground transition-colors">
                 Forgot password?
               </button>
@@ -710,7 +764,7 @@ const Auth = () => {
                   placeholder="Min 8 chars, letters + numbers" className="h-11 rounded-xl bg-card border-border" required minLength={8} />
               </div>
               <Button type="submit" disabled={loading}
-                className="w-full h-11 rounded-xl bg-foreground text-background hover:bg-foreground/90 text-sm font-medium">
+                className="w-full h-11 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 text-sm font-medium">
                 {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Create Account"}
               </Button>
             </form>

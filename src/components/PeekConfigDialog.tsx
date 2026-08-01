@@ -12,10 +12,11 @@ import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
 import { useTheme } from "@/contexts/ThemeContext";
-import { Camera, Eye, Users, UserX, Gauge } from "lucide-react";
+import { Camera, Eye, Users, UserX, Gauge, ShieldCheck, Bug } from "lucide-react";
 import { useState, useEffect } from "react";
 import { loadOwnerProfile } from "@/lib/faceRecognition";
 import FaceEnrollmentDialog from "./FaceEnrollmentDialog";
+import SecurityDashboard from "./SecurityDashboard";
 import { hapticLight } from "@/lib/haptics";
 
 interface Props { open: boolean; onClose: () => void; }
@@ -24,6 +25,7 @@ const PeekConfigDialog = ({ open, onClose }: Props) => {
   const { appSettings, updateSetting } = useTheme();
   const [enrolled, setEnrolled]       = useState(0);
   const [enrollOpen, setEnrollOpen]   = useState(false);
+  const [dashboardOpen, setDashboardOpen] = useState(false);
 
   const refresh = () => loadOwnerProfile().then((p) => setEnrolled(p?.count ?? 0));
   useEffect(() => { if (open) refresh(); }, [open]);
@@ -40,6 +42,11 @@ const PeekConfigDialog = ({ open, onClose }: Props) => {
               Locks the screen when someone other than you is looking.
             </DialogDescription>
           </DialogHeader>
+
+          <Button size="sm" variant="outline" className="w-full gap-1.5"
+            onClick={() => { hapticLight(); setDashboardOpen(true); }}>
+            <ShieldCheck className="h-3.5 w-3.5" /> View security dashboard
+          </Button>
 
           <div className="space-y-5 mt-2">
             {/* Owner enrollment */}
@@ -94,8 +101,8 @@ const PeekConfigDialog = ({ open, onClose }: Props) => {
               <SliderRow
                 label="Lock delay"
                 value={appSettings.peekLockDelay}
-                hint={`${(appSettings.peekLockDelay / 1000).toFixed(1)}s before lock`}
-                min={500} max={3000} step={100}
+                hint={`${appSettings.peekLockDelay}ms before lock`}
+                min={100} max={3000} step={50}
                 onChange={(v) => updateSetting("peekLockDelay", v)} />
 
               <SliderRow
@@ -118,6 +125,24 @@ const PeekConfigDialog = ({ open, onClose }: Props) => {
                 hint={`Every ${appSettings.peekCheckInterval}ms`}
                 min={300} max={1500} step={100}
                 onChange={(v) => updateSetting("peekCheckInterval", v)} />
+
+              <SliderRow
+                label="Static-face timeout"
+                value={appSettings.peekStaticStrangerTimeoutMs}
+                hint={appSettings.peekStaticStrangerTimeoutMs === 0
+                  ? "Disabled — never lock on motionless faces alone"
+                  : `Lock after ${(appSettings.peekStaticStrangerTimeoutMs / 1000).toFixed(1)}s of an unrecognized face showing no movement (possible photo/screen)`}
+                min={0} max={15000} step={500}
+                onChange={(v) => updateSetting("peekStaticStrangerTimeoutMs", v)} />
+            </section>
+
+            {/* Advanced */}
+            <section className="space-y-3">
+              <p className="text-[11px] uppercase tracking-wider text-muted-foreground">Advanced</p>
+              <Row icon={Bug} label="Debug HUD"
+                desc="Live signal readout overlay (pipeline tier, worker status)"
+                checked={appSettings.peekDebugMode}
+                onChange={(v) => updateSetting("peekDebugMode", v)} />
             </section>
           </div>
         </DialogContent>
@@ -127,6 +152,12 @@ const PeekConfigDialog = ({ open, onClose }: Props) => {
         open={enrollOpen}
         onClose={() => setEnrollOpen(false)}
         onEnrolled={refresh}
+      />
+
+      <SecurityDashboard
+        open={dashboardOpen}
+        onClose={() => setDashboardOpen(false)}
+        appSettings={appSettings}
       />
     </>
   );

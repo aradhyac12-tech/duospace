@@ -13,6 +13,9 @@
 
 import { Component, type ReactNode, type ErrorInfo } from "react";
 import { logError } from "@/lib/telemetry";
+import { errorManager } from "@/lib/errors/errorManager";
+import type { DuoSpaceErrorPayload } from "@/lib/errors/types";
+import { ErrorCard } from "@/components/errors/ErrorCard";
 
 interface Props {
   children: ReactNode;
@@ -20,31 +23,49 @@ interface Props {
   context?: string;
   /** Custom fallback UI; receives `reset` callback */
   fallback?: (reset: () => void) => ReactNode;
+  /** DS error code to raise for renders errors caught in this boundary. Defaults to DS-UNKNOWN-001. */
+  errorCode?: string;
+  /** Whether to show stack traces / raw details in the default card. Gate this on a Developer Mode setting. */
+  developerMode?: boolean;
 }
 
 interface State {
   hasError: boolean;
   errorMessage: string;
+  dsError: DuoSpaceErrorPayload | null;
 }
 
 export class ErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
     super(props);
-    this.state = { hasError: false, errorMessage: "" };
+    this.state = { hasError: false, errorMessage: "", dsError: null };
   }
 
-  static getDerivedStateFromError(error: unknown): State {
+  static getDerivedStateFromError(error: unknown): Partial<State> {
     const msg = error instanceof Error ? error.message : String(error);
     return { hasError: true, errorMessage: msg };
   }
 
   componentDidCatch(error: unknown, info: ErrorInfo): void {
     const context = this.props.context ?? "unknown";
+    // Preserve the existing telemetry call verbatim — nothing that already
+    // depends on this event shape (recentEvents, backend sink) regresses.
     logError(`ErrorBoundary[${context}]`, "Unhandled render error", { error, componentStack: info.componentStack });
+
+    // Also raise it through the DuoSpace Error System so it shows up in the
+    // dev log panel / stats and (for the default fallback) renders as a
+    // proper ErrorCard instead of a bare message.
+    const dsError = errorManager.capture(this.props.errorCode ?? "DS-UNKNOWN-001", {
+      screen: context,
+      component: "ErrorBoundary",
+      cause: error,
+      details: { componentStack: info.componentStack },
+    });
+    this.setState({ dsError });
   }
 
   reset = (): void => {
-    this.setState({ hasError: false, errorMessage: "" });
+    this.setState({ hasError: false, errorMessage: "", dsError: null });
   };
 
   render(): ReactNode {
@@ -54,7 +75,16 @@ export class ErrorBoundary extends Component<Props, State> {
       return this.props.fallback(this.reset);
     }
 
-    // Default fallback UI — minimal and action-oriented
+    if (this.state.dsError) {
+      return (
+        <div className="flex items-center justify-center min-h-[200px] px-6 py-10">
+          <ErrorCard error={this.state.dsError} onRetry={this.reset} developerMode={this.props.developerMode} />
+        </div>
+      );
+    }
+
+    // Fallback for the rare frame where getDerivedStateFromError has fired
+    // but componentDidCatch (and therefore the DS error) hasn't yet.
     return (
       <div className="flex flex-col items-center justify-center min-h-[200px] px-6 py-10 gap-4">
         <div className="h-12 w-12 rounded-full bg-destructive/10 flex items-center justify-center">
@@ -70,7 +100,7 @@ export class ErrorBoundary extends Component<Props, State> {
         </div>
         <button
           onClick={this.reset}
-          className="h-9 px-5 rounded-full bg-foreground text-background text-xs font-medium"
+          className="h-9 px-5 rounded-full bg-primary text-primary-foreground text-xs font-medium"
         >
           Try again
         </button>

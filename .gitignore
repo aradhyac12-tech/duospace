@@ -1,0 +1,12 @@
+node_modules
+dist
+dist-ssr
+
+# Local env files may contain real Supabase credentials — never commit these.
+# .env.example is the only env file meant to be tracked.
+.env
+.env.local
+.env.*.local
+
+*.log
+.DS_Store

@@ -6,6 +6,7 @@ import { X, Copy, Trash2, Captions, AlertCircle, ChevronDown } from "lucide-reac
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useLipReading, LipReadLanguage, LipReadResult } from "@/hooks/useLipReading";
 import { useToast } from "@/hooks/use-toast";
+import { hapticLight, hapticMedium, hapticSelection } from "@/lib/haptics";
 
 interface LipReadingOverlayProps {
   videoRef: React.RefObject<HTMLVideoElement>;
@@ -91,7 +92,7 @@ const LipReadingOverlay = ({ videoRef, onClose }: LipReadingOverlayProps) => {
     >
       {/* Header */}
       <div className="flex items-center gap-2 px-4 pt-3 pb-2">
-        <div className={`h-2 w-2 rounded-full shrink-0 ${isActive ? "bg-green-400 animate-pulse" : "bg-white/20"}`} />
+        <div className={`h-2 w-2 rounded-full shrink-0 ${isActive ? "bg-success animate-pulse" : "bg-white/20"}`} />
         <Captions className="h-3.5 w-3.5 text-white/50 shrink-0" />
         {/* LR-01 FIX: clarify this reads the partner's lips, not the user's */}
         <span className="text-[11px] text-white/60 flex-1 min-w-0 truncate">
@@ -100,25 +101,25 @@ const LipReadingOverlay = ({ videoRef, onClose }: LipReadingOverlayProps) => {
         <div className="flex items-center gap-1">
           {hasText && (
             <>
-              <button onClick={handleCopy}
-                className="h-7 w-7 rounded-full bg-white/10 flex items-center justify-center active:bg-white/20">
-                <Copy className="h-3 w-3 text-white/60" />
+              <button onClick={() => { hapticMedium(); handleCopy(); }} aria-label="Copy transcript"
+                className="h-8 w-8 rounded-full bg-white/10 flex items-center justify-center active:bg-white/20">
+                <Copy className="h-3 w-3 text-white/60" aria-hidden="true" />
               </button>
-              <button onClick={handleClear}
-                className="h-7 w-7 rounded-full bg-white/10 flex items-center justify-center active:bg-white/20">
-                <Trash2 className="h-3 w-3 text-white/60" />
+              <button onClick={() => { hapticLight(); handleClear(); }} aria-label="Clear transcript"
+                className="h-8 w-8 rounded-full bg-white/10 flex items-center justify-center active:bg-white/20">
+                <Trash2 className="h-3 w-3 text-white/60" aria-hidden="true" />
               </button>
             </>
           )}
-          <button onClick={() => setCollapsed(v => !v)}
-            className="h-7 w-7 rounded-full bg-white/10 flex items-center justify-center">
+          <button onClick={() => { hapticLight(); setCollapsed(v => !v); }} aria-label={collapsed ? "Expand" : "Collapse"}
+            className="h-8 w-8 rounded-full bg-white/10 flex items-center justify-center">
             <motion.div animate={{ rotate: collapsed ? 180 : 0 }} transition={{ duration: 0.2 }}>
-              <ChevronDown className="h-3.5 w-3.5 text-white/60" />
+              <ChevronDown className="h-3.5 w-3.5 text-white/60" aria-hidden="true" />
             </motion.div>
           </button>
-          <button onClick={onClose}
-            className="h-7 w-7 rounded-full bg-white/10 flex items-center justify-center active:bg-white/20">
-            <X className="h-3.5 w-3.5 text-white/60" />
+          <button onClick={() => { hapticLight(); onClose(); }} aria-label="Close"
+            className="h-8 w-8 rounded-full bg-white/10 flex items-center justify-center active:bg-white/20">
+            <X className="h-3.5 w-3.5 text-white/60" aria-hidden="true" />
           </button>
         </div>
       </div>
@@ -135,7 +136,7 @@ const LipReadingOverlay = ({ videoRef, onClose }: LipReadingOverlayProps) => {
             {/* Language tabs */}
             <div className="px-4 pb-2.5 flex gap-1.5">
               {LANGUAGES.map(lang => (
-                <button key={lang.code} onClick={() => handleLangChange(lang.code)}
+                <button key={lang.code} onClick={() => { hapticSelection(); handleLangChange(lang.code); }}
                   className={`px-3 py-1 rounded-full text-[11px] font-medium transition-all ${
                     language === lang.code ? "bg-white text-black scale-105" : "bg-white/10 text-white/50 hover:bg-white/15"
                   }`}>
@@ -147,7 +148,7 @@ const LipReadingOverlay = ({ videoRef, onClose }: LipReadingOverlayProps) => {
             {/* Transcript — LR-07: scrollable container with ref at bottom */}
             <div className="px-4 min-h-[56px] max-h-[100px] overflow-y-auto pb-1">
               {error ? (
-                <div className="flex items-start gap-2 text-red-400 py-1">
+                <div className="flex items-start gap-2 text-destructive py-1">
                   <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
                   <p className="text-[11px] leading-relaxed">{error}</p>
                 </div>
@@ -175,7 +176,7 @@ const LipReadingOverlay = ({ videoRef, onClose }: LipReadingOverlayProps) => {
               <div className="px-4 pb-2">
                 <div className="h-0.5 bg-white/10 rounded-full overflow-hidden">
                   <motion.div
-                    className={`h-full rounded-full ${confidence > 0.6 ? "bg-green-400" : confidence > 0.4 ? "bg-yellow-400" : "bg-red-400"}`}
+                    className={`h-full rounded-full ${confidence > 0.6 ? "bg-success" : confidence > 0.4 ? "bg-warning" : "bg-destructive"}`}
                     animate={{ width: `${Math.round(confidence * 100)}%` }}
                     transition={{ duration: 0.15 }}
                   />
@@ -186,9 +187,9 @@ const LipReadingOverlay = ({ videoRef, onClose }: LipReadingOverlayProps) => {
 
             {/* Start/Stop button */}
             <div className="px-4 pb-3">
-              <button onClick={toggleActive} disabled={isLoading}
+              <button onClick={() => { hapticMedium(); toggleActive(); }} disabled={isLoading}
                 className={`w-full py-2.5 rounded-xl text-sm font-semibold transition-all disabled:opacity-40 ${
-                  isActive ? "bg-red-500/80 text-white" : "bg-white text-black"
+                  isActive ? "bg-destructive/80 text-destructive-foreground" : "bg-white text-black"
                 }`}>
                 {isLoading ? "Loading MediaPipe…" : isActive ? "Stop" : "Start Lip Reading"}
               </button>

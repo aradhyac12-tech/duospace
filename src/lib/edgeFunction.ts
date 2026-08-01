@@ -1,5 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import { logInfo, logWarn, newTraceId } from "@/lib/telemetry";
+import { errorManager } from "@/lib/errors/errorManager";
 
 /**
  * Hardened wrapper around `supabase.functions.invoke`.
@@ -119,6 +120,7 @@ export async function invokeEdgeFunction<T = unknown>(
 
         if (isNetworkError(error)) {
           logWarn("edgefn", `${name} network failure`, { requestId, attemptNum, ms }, requestId);
+          errorManager.capture("DS-NET-003", { component: "edgeFunction", action: name, cause: error, details: { requestId, attemptNum } });
           throw new EdgeFunctionError(
             `The "${name}" server function isn't reachable. It may not be deployed yet, or your connection dropped. Try again in a moment.`,
             "network",
@@ -128,6 +130,7 @@ export async function invokeEdgeFunction<T = unknown>(
 
         logWarn("edgefn", `${name} returned an error`, { requestId, attemptNum, status, detail }, requestId);
         if (status === 404 || /not found|requested function was not found/i.test(detail ?? error.message ?? "")) {
+          errorManager.capture("DS-API-011", { component: "edgeFunction", action: name, cause: error, details: { requestId, status } });
           throw new EdgeFunctionError(
             `The "${name}" server function is not deployed in this Supabase project yet. Deploy it to project jzlpelxwzjjpddqcrtpu and try again.`,
             "http",
@@ -135,6 +138,7 @@ export async function invokeEdgeFunction<T = unknown>(
             status,
           );
         }
+        errorManager.capture("DS-API-001", { component: "edgeFunction", action: name, cause: error, details: { requestId, status, detail } });
         throw new EdgeFunctionError(
           detail || error.message || "The server rejected the request.",
           "http",
@@ -148,6 +152,7 @@ export async function invokeEdgeFunction<T = unknown>(
     } catch (e: unknown) {
       if (e instanceof EdgeFunctionError) throw e;
       if (isAbortError(e)) {
+        errorManager.capture("DS-NET-002", { component: "edgeFunction", action: name, cause: e, details: { requestId } });
         throw new EdgeFunctionError(
           "The request took too long to respond. Please check your connection and try again.",
           "timeout",
@@ -155,6 +160,7 @@ export async function invokeEdgeFunction<T = unknown>(
         );
       }
       if (isNetworkError(e)) {
+        errorManager.capture("DS-NET-003", { component: "edgeFunction", action: name, cause: e, details: { requestId } });
         throw new EdgeFunctionError(
           `The "${name}" server function isn't reachable. It may not be deployed to this Supabase project yet, or CORS is blocking this app origin. Deploy the function and allow this preview/published URL, then try again.`,
           "network",

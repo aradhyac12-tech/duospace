@@ -84,7 +84,7 @@ const AddEmailPasswordDialog = ({
                 placeholder="you@example.com" className="h-11 rounded-xl bg-card border-border" />
             </div>
             <Button onClick={request} disabled={loading}
-              className="w-full h-11 rounded-xl bg-foreground text-background hover:bg-foreground/90">
+              className="w-full h-11 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90">
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Send code"}
             </Button>
           </div>
@@ -107,7 +107,7 @@ const AddEmailPasswordDialog = ({
             <div className="flex gap-2">
               <Button variant="ghost" onClick={() => setStep("email")} className="flex-1">Back</Button>
               <Button onClick={verify} disabled={loading || otp.length !== 6 || password.length < 8}
-                className="flex-1 rounded-xl bg-foreground text-background hover:bg-foreground/90">
+                className="flex-1 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90">
                 {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Confirm"}
               </Button>
             </div>

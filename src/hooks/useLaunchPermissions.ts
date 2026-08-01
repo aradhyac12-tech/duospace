@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { Capacitor } from "@capacitor/core";
 import { logInfo, logWarn } from "@/lib/telemetry";
+import { ensureMediaPermission } from "@/lib/mediaPermissions";
 
 /**
  * Requests every native permission DuoSpace needs, once, right as the app
@@ -9,10 +10,10 @@ import { logInfo, logWarn } from "@/lib/telemetry";
  * earliest point in the React tree to ask).
  *
  * Deliberately fire-and-forget and non-blocking: a denial here never gates
- * the UI. Each feature still re-checks/re-requests its own permission at the
- * point of use (see useLiveLocation, QRSignInScanner, usePushNotifications),
- * so declining here doesn't lock anyone out — it just avoids a wall of
- * separate prompts scattered across first-run.
+ * the UI. Every feature re-checks and re-requests through the same
+ * `ensureMediaPermission` service at the point of use, and shows the shared
+ * recovery sheet when denied — so declining here doesn't lock anyone out, it
+ * just avoids a wall of separate prompts scattered across first-run.
  *
  * Web/PWA: no-op. Browsers only allow permission prompts to be triggered
  * from a user gesture in direct response to an API call (getUserMedia, etc.),
@@ -39,27 +40,12 @@ export function useLaunchPermissions() {
       // Small settle delay so the first prompt doesn't collide with the
       // splash fade-out animation on iOS.
       await new Promise((r) => setTimeout(r, 300));
-      // Camera — used by the QR scanner and in-chat photo/video capture.
-      try {
-        const { Camera } = await import("@capacitor/camera");
-        const status = await Camera.checkPermissions();
-        if (status.camera !== "granted") {
-          await Camera.requestPermissions({ permissions: ["camera"] });
-        }
-        logInfo("permissions", "camera requested on launch");
-      } catch (e) {
-        logWarn("permissions", "camera request failed on launch", e);
-      }
 
-      // Microphone — used by calls. There's no dedicated Capacitor
-      // permission plugin for it; the standard way to trigger the native
-      // prompt is a throwaway getUserMedia probe, immediately released.
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        stream.getTracks().forEach((t) => t.stop());
-        logInfo("permissions", "microphone requested on launch");
-      } catch (e) {
-        logWarn("permissions", "microphone request failed on launch", e);
+      // Media permissions, one at a time so the OS dialogs queue cleanly.
+      // camera → photos (library read/write) → microphone → files.
+      for (const kind of ["camera", "photos", "microphone", "files"] as const) {
+        const r = await ensureMediaPermission(kind);
+        logInfo("permissions", `launch ${kind} -> ${r.state}`);
       }
 
       // Push notifications.

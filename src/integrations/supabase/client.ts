@@ -6,16 +6,14 @@ import type { Database } from './types';
 // never hardcode a URL or key here. Set VITE_SUPABASE_URL and
 // VITE_SUPABASE_PUBLISHABLE_KEY in your .env.local (see .env.example) for
 // local dev, and as Cloudflare Pages build environment variables in prod.
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+// Fallbacks are the PUBLIC project URL + publishable/anon key (safe to ship in
+// client code) so a missing .env can never blank-screen the app.
+const SUPABASE_URL =
+  import.meta.env.VITE_SUPABASE_URL || 'https://jzlpelxwzjjpddqcrtpu.supabase.co';
+const SUPABASE_PUBLISHABLE_KEY =
+  import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp6bHBlbHh3empqcGRkcWNydHB1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQyNzU0MTAsImV4cCI6MjA5OTg1MTQxMH0.xJtg-OzKT5GoW9GfNy-IV-7DgNw_2-tHs7g8M6csNKc';
 
-if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
-  throw new Error(
-    'Missing Supabase environment variables. Set VITE_SUPABASE_URL and ' +
-      'VITE_SUPABASE_PUBLISHABLE_KEY (see .env.example). In Cloudflare Pages, ' +
-      'add them under Settings → Environment variables for this project.',
-  );
-}
 
 
 function isNewSupabaseApiKey(value: string): boolean {

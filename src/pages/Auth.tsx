@@ -18,6 +18,8 @@ import PasskeyLogin from "@/components/auth/PasskeyLogin";
 import { logInfo, logWarn, logError, newTraceId } from "@/lib/telemetry";
 import { cleanAuthCallbackUrl, completeAuthCallback, getPostAuthPath, hasAuthCallback, parseAuthCallbackUrl } from "@/lib/auth-callback";
 import { hapticLight, hapticMedium } from "@/lib/haptics";
+import { openExternalUrl, closeExternalBrowser } from "@/lib/nativeBrowser";
+
 
 // Structured-logging helpers for the auth surface.
 // We deliberately log: request_id (traceId), origin, redirect_uri, status (ok|error|redirected),
@@ -157,13 +159,9 @@ const Auth = () => {
     let inFlight = false;
 
     const closeInAppBrowser = async () => {
-      try {
-        const { Browser } = await import("@capacitor/browser");
-        await Browser.close();
-      } catch {
-        /* @capacitor/browser not present or already closed — no-op */
-      }
+      await closeExternalBrowser();
     };
+
 
     const handleDeepLinkUrl = async (url: string, source: "appUrlOpen" | "getLaunchUrl") => {
         const traceId = newTraceId("oauth_cb_native");

@@ -230,15 +230,24 @@ export const usePeekDetection = (
   // each tick, not this ref.
   const lastTextureRef = useRef<{ laplacianVar: number; lumaStdDev: number; suspected: boolean } | null>(null);
 
-  // Load owner profile once / on enable
+  // Load owner profile once / on enable, AND whenever it changes (enroll or
+  // clear) while already running. Enrollment happens in Settings, separate
+  // from the Peek Guard toggle — without this second listener, enrolling
+  // your face while Peek Guard was already on left this hook holding a
+  // stale/empty owner reference until you toggled it off/on or restarted
+  // the app, so it kept treating you as unrecognized after enrolling.
   useEffect(() => {
     let cancelled = false;
-    loadOwnerProfile().then((p) => {
-      if (cancelled) return;
-      ownerRef.current = p;
-      setOwnerEnrolled(!!p && p.count > 0);
-    });
-    return () => { cancelled = true; };
+    const reload = () => {
+      loadOwnerProfile().then((p) => {
+        if (cancelled) return;
+        ownerRef.current = p;
+        setOwnerEnrolled(!!p && p.count > 0);
+      });
+    };
+    reload();
+    window.addEventListener("duospace:owner-profile-changed", reload);
+    return () => { cancelled = true; window.removeEventListener("duospace:owner-profile-changed", reload); };
   }, [enabled]);
 
   const teardown = useCallback(() => {

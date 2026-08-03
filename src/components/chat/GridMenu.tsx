@@ -36,8 +36,14 @@ export const HubButton = ({ onClick, isOpen, onLongPress }: HubButtonProps) => {
       }}
       transition={{ type: "spring", stiffness: 380, damping: 22 }}
       aria-label="Open shared features"
+      aria-expanded={isOpen}
+      id="chat-hub-button"
       className="h-10 w-10 rounded-full flex items-center justify-center shrink-0 relative overflow-hidden"
     >
+      {/* Open = clockwise sweep to 90°, close = the same arc unwinding back
+          to 0° (not a mirrored/negative spin) — this is the button's own
+          half of the "clockwise open / anticlockwise close" motion; the
+          popover list underneath echoes it per-item. */}
       <motion.div
         animate={{ rotate: isOpen ? 90 : 0 }}
         transition={{ type: "spring", stiffness: 260, damping: 20 }}
@@ -60,6 +66,17 @@ const navItems = [
   { path: "/shayari", icon: BookOpen, label: "Shayari" },
   { path: "/us", icon: Heart, label: "Us" },
 ];
+
+// FIX (Hub redesign): the hub used to open as a full-width bottom sheet in a
+// 4-column grid, completely disconnected from the sparkle button that
+// triggered it. Now it opens as a vertical list of pills directly above the
+// hub button (which lives at the right edge of the composer), so it visibly
+// unfurls *from* the button instead of sliding up from an unrelated edge.
+// Each item sweeps in on a clockwise arc (rotate -26° → 0°, matching the
+// button's own 0° → 90° open spin) and sweeps back out anticlockwise on
+// close (rotate 0° → 26°), staggered bottom-to-top so it reads as a single
+// fan unfurling near the button rather than a generic list fade.
+const ITEM_ROTATE_DEG = 26;
 
 const GridMenu = ({ onClose, onScheduledMessage, onLoveLetter }: GridMenuProps) => {
   const navigate = useNavigate();
@@ -88,49 +105,50 @@ const GridMenu = ({ onClose, onScheduledMessage, onLoveLetter }: GridMenuProps) 
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      transition={{ duration: 0.18 }}
-      className="fixed inset-0 z-50 bg-background/50 backdrop-blur-sm flex items-end justify-center"
+      transition={{ duration: 0.16 }}
+      className="fixed inset-0 z-50 bg-background/40 backdrop-blur-[2px]"
       onClick={() => { hapticLight(); onClose(); }}
     >
-      <motion.div
-        initial={{ y: "100%" }}
-        animate={{ y: 0 }}
-        exit={{ y: "100%" }}
-        transition={{ type: "spring", stiffness: 380, damping: 34 }}
+      {/* Anchored above-right of the hub button — bottom offset clears the
+          composer bar + safe area, right offset roughly aligns the column
+          with the button itself (both live in the same px-3 padded row). */}
+      <div
+        className="absolute right-4 flex flex-col items-end gap-2"
+        style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 78px)" }}
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-md rounded-t-[28px] bg-card/95 backdrop-blur-md border-t border-border/20 pt-2.5 pb-6 safe-bottom"
-        style={{ boxShadow: "var(--shadow-soft)" }}
       >
-        {/* Drag handle */}
-        <div className="flex justify-center pb-4">
-          <span className="h-1 w-9 rounded-full bg-border" />
-        </div>
-
-        <div className="grid grid-cols-4 gap-x-2 gap-y-5 px-5">
-          {allItems.map((item, i) => {
-            const Icon = item.icon;
-            const isAction = i < actionItems.length;
-            return (
-              <motion.button
-                key={item.label}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.02, duration: 0.18 }}
-                whileTap={{ scale: 0.92 }}
-                onClick={item.action}
-                className="flex flex-col items-center gap-1.5"
-              >
-                <span className={`h-14 w-14 rounded-2xl flex items-center justify-center backdrop-blur-sm ${
-                  isAction ? "bg-primary/10" : "bg-muted/60"
-                }`}>
-                  <Icon className={`h-[22px] w-[22px] ${isAction ? "text-primary" : "text-foreground/80"}`} />
-                </span>
-                <span className="text-[11px] font-medium text-foreground/80 text-center leading-tight">{item.label}</span>
-              </motion.button>
-            );
-          })}
-        </div>
-      </motion.div>
+        {allItems.map((item, i) => {
+          const Icon = item.icon;
+          const isAction = i < actionItems.length;
+          // Reverse index so the item closest to the hub button (last in
+          // the list, bottom of the stack) animates first — the fan opens
+          // outward from the button and closes back into it.
+          const order = allItems.length - 1 - i;
+          return (
+            <motion.button
+              key={item.label}
+              initial={{ opacity: 0, scale: 0.5, x: 14, rotate: -ITEM_ROTATE_DEG }}
+              animate={{ opacity: 1, scale: 1, x: 0, rotate: 0 }}
+              exit={{ opacity: 0, scale: 0.5, x: 14, rotate: ITEM_ROTATE_DEG }}
+              transition={{
+                type: "spring", stiffness: 420, damping: 28,
+                delay: order * 0.035,
+              }}
+              style={{ transformOrigin: "bottom right" }}
+              whileTap={{ scale: 0.94 }}
+              onClick={item.action}
+              className="flex items-center gap-2.5 pl-3.5 pr-2 py-2 rounded-full bg-card/95 backdrop-blur-md border border-border/40 shadow-[0_6px_20px_-6px_hsl(var(--foreground)/0.25)]"
+            >
+              <span className="text-xs font-medium text-foreground/85 whitespace-nowrap">{item.label}</span>
+              <span className={`h-8 w-8 rounded-full flex items-center justify-center shrink-0 ${
+                isAction ? "bg-primary/12" : "bg-muted/70"
+              }`}>
+                <Icon className={`h-[16px] w-[16px] ${isAction ? "text-primary" : "text-foreground/75"}`} />
+              </span>
+            </motion.button>
+          );
+        })}
+      </div>
     </motion.div>
   );
 };

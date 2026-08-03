@@ -286,6 +286,11 @@ const Calls = () => {
 
   const startCall = async (mode: "video" | "voice") => {
     if (!user) return;
+    // BUG FIX: guard against a fast double-tap calling startCall twice —
+    // the permission prompt below is async, widening the window in which
+    // a second tap could race a second joinCall() and trip Daily's
+    // "Duplicate DailyIframe instances are not allowed" error.
+    if (isStartingCall) return;
 
     // Request permissions first
     const hasPermission = await requestMediaPermission(mode);

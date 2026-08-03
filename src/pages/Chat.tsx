@@ -1108,6 +1108,11 @@ const Chat = () => {
   // ─── Calling ─────────────────────────────────────────────────────────────
   const startCall = async (mode:"video"|"voice") => {
     if (!user||!partnerId) return;
+    // BUG FIX: guard against a fast double-tap calling startCall twice
+    // before the isStartingCall-driven `disabled` prop re-renders — this
+    // was racing two joinCall() calls and causing Daily's "Duplicate
+    // DailyIframe instances are not allowed" error.
+    if (isStartingCall) return;
 
     // FIX AUDIT #6: rate-limit room creation (max 2 per minute)
     if (!callRoomLimiter.allow()) {
@@ -1202,7 +1207,19 @@ const Chat = () => {
       ? new Date((b.data as ImportedMessage).original_timestamp).getTime()
       : new Date(b.data.created_at).getTime();
     const diff = tsA - tsB;
-    return diff !== 0 ? diff : a.data.id.localeCompare(b.data.id); // BUG-15 stable sort
+    if (diff !== 0) return diff;
+    // BUG-15 stable sort, refined: same original_timestamp (common for
+    // WhatsApp imports, which only carry minute-level precision) used to
+    // fall back to comparing `id` — a random UUID with zero relationship
+    // to actual send order, so same-minute bursts could render shuffled.
+    // Falling back to each row's own `created_at` (DB insertion order)
+    // instead approximates the real order much better, since import
+    // batches are inserted sequentially. New imports no longer produce
+    // exact ties at all (see the timestamp-nudge fix in runWhatsAppImport),
+    // so this path now mainly protects chats imported before that fix.
+    const insA = new Date(a.data.created_at).getTime();
+    const insB = new Date(b.data.created_at).getTime();
+    return insA !== insB ? insA - insB : a.data.id.localeCompare(b.data.id);
   });
 
   const groupedTimeline: { date:string; items:TimelineItem[] }[] = [];
@@ -1223,7 +1240,7 @@ const Chat = () => {
   if (callState==="error") {
     return (
       <motion.div initial={{ opacity:0 }} animate={{ opacity:1 }}
-        className="flex flex-col h-[100dvh] bg-destructive/10 items-center justify-center gap-4 px-6">
+        className="fixed inset-0 z-[100] flex flex-col h-[100dvh] bg-destructive/10 items-center justify-center gap-4 px-6">
         <div className="text-center space-y-2">
           <PhoneOff className="h-12 w-12 text-destructive mx-auto" />
           <p className="text-base font-semibold text-foreground">Call failed</p>
@@ -1240,7 +1257,7 @@ const Chat = () => {
   if (callState==="joined"||callState==="joining") {
     return (
       <motion.div initial={{ opacity:0 }} animate={{ opacity:1 }}
-        className="flex flex-col h-[100dvh] bg-[hsl(var(--foreground))] relative">
+        className="fixed inset-0 z-[100] flex flex-col h-[100dvh] bg-[hsl(var(--foreground))] relative">
         <video ref={remoteVideoRef} autoPlay playsInline
           className={`absolute inset-0 w-full h-full object-cover ${isScreenSharing?"hidden":""}`} />
         <video ref={screenShareRef} autoPlay playsInline
@@ -1324,8 +1341,17 @@ const Chat = () => {
       }
     : undefined;
 
+  // FIX: was h-[100dvh] (a hard, device-height value). Chat renders inside
+  // AppLayout's <main>, which is already sized correctly (100dvh minus the
+  // offline banner) and reserves room for the floating dock via
+  // padding-bottom. Forcing 100dvh here made this box taller than the
+  // space its flex parent actually gave it, so the composer got pushed
+  // past the parent's clipped edge — visible as dead white space below
+  // the chat box, and inconsistent across devices with different safe
+  // areas ("not according to screen ratio"). h-full fills exactly what
+  // the parent already computed.
   return (
-    <div className="flex flex-col h-[100dvh] bg-background overflow-hidden" style={rootBackgroundStyle}>
+    <div className="flex flex-col h-full bg-background overflow-hidden" style={rootBackgroundStyle}>
       <ChatSurpriseHost />
       <IncomingCallOverlay onAccept={handleAcceptIncoming} onDecline={handleDeclineIncoming} />
 

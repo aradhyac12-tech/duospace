@@ -531,9 +531,13 @@ const Auth = () => {
         } catch {
           /* URL parsing failed — non-fatal, proceed to open browser regardless */
         }
-        const { Browser } = await import("@capacitor/browser");
-        await Browser.open({ url: data.url, presentationStyle: "popover" });
-        logInfo("auth.oauth", "opened system browser", { request_id: traceId, provider, status: "redirected" }, traceId);
+        // openExternalUrl() falls back to a top-level navigation when the
+        // native @capacitor/browser plugin isn't registered in the APK
+        // ("Browser" plugin is not implemented on android) — the OAuth flow
+        // must never die just because the in-app browser is unavailable.
+        const how = await openExternalUrl(data.url);
+        logInfo("auth.oauth", "opened system browser", { request_id: traceId, provider, status: "redirected", via: how }, traceId);
+
         return;
       }
 

@@ -138,6 +138,19 @@ export interface OwnerProfile {
   selfSimFloor?: number;
 }
 
+// FIX (peek guard "owner not detected" even after enrolling): usePeekDetection
+// only loaded the owner profile once, when Peek Guard was switched on (effect
+// keyed off `enabled`). Enrolling a face *while Peek Guard was already
+// running* — the normal flow, since enrollment lives in Settings — never
+// re-ran that effect, so the in-memory owner reference stayed null/stale
+// until the user toggled Peek Guard off and on again or restarted the app.
+// Dispatching this event lets an already-mounted usePeekDetection instance
+// reload the profile immediately after save/clear.
+const OWNER_PROFILE_EVENT = "duospace:owner-profile-changed";
+const notifyOwnerProfileChanged = () => {
+  if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(OWNER_PROFILE_EVENT));
+};
+
 export const saveOwnerProfile = async (embeddings: Float32Array[]): Promise<void> => {
   let selfSimFloor: number | undefined;
   if (embeddings.length >= 2) {
@@ -157,6 +170,7 @@ export const saveOwnerProfile = async (embeddings: Float32Array[]): Promise<void
     selfSimFloor,
   };
   await idbSet(KEY, JSON.stringify(profile));
+  notifyOwnerProfileChanged();
 };
 
 export const loadOwnerProfile = async (): Promise<OwnerProfile | null> => {
@@ -165,7 +179,10 @@ export const loadOwnerProfile = async (): Promise<OwnerProfile | null> => {
   try { return JSON.parse(raw) as OwnerProfile; } catch { return null; }
 };
 
-export const clearOwnerProfile = async (): Promise<void> => idbDelete(KEY);
+export const clearOwnerProfile = async (): Promise<void> => {
+  await idbDelete(KEY);
+  notifyOwnerProfileChanged();
+};
 
 /**
  * Match score for a candidate face against the enrolled owner. Uses the

@@ -18,6 +18,8 @@ import PasskeyLogin from "@/components/auth/PasskeyLogin";
 import { logInfo, logWarn, logError, newTraceId } from "@/lib/telemetry";
 import { cleanAuthCallbackUrl, completeAuthCallback, getPostAuthPath, hasAuthCallback, parseAuthCallbackUrl } from "@/lib/auth-callback";
 import { hapticLight, hapticMedium } from "@/lib/haptics";
+import { openExternalUrl, closeExternalBrowser } from "@/lib/nativeBrowser";
+
 
 // Structured-logging helpers for the auth surface.
 // We deliberately log: request_id (traceId), origin, redirect_uri, status (ok|error|redirected),
@@ -157,13 +159,9 @@ const Auth = () => {
     let inFlight = false;
 
     const closeInAppBrowser = async () => {
-      try {
-        const { Browser } = await import("@capacitor/browser");
-        await Browser.close();
-      } catch {
-        /* @capacitor/browser not present or already closed — no-op */
-      }
+      await closeExternalBrowser();
     };
+
 
     const handleDeepLinkUrl = async (url: string, source: "appUrlOpen" | "getLaunchUrl") => {
         const traceId = newTraceId("oauth_cb_native");
@@ -533,9 +531,13 @@ const Auth = () => {
         } catch {
           /* URL parsing failed — non-fatal, proceed to open browser regardless */
         }
-        const { Browser } = await import("@capacitor/browser");
-        await Browser.open({ url: data.url, presentationStyle: "popover" });
-        logInfo("auth.oauth", "opened system browser", { request_id: traceId, provider, status: "redirected" }, traceId);
+        // openExternalUrl() falls back to a top-level navigation when the
+        // native @capacitor/browser plugin isn't registered in the APK
+        // ("Browser" plugin is not implemented on android) — the OAuth flow
+        // must never die just because the in-app browser is unavailable.
+        const how = await openExternalUrl(data.url);
+        logInfo("auth.oauth", "opened system browser", { request_id: traceId, provider, status: "redirected", via: how }, traceId);
+
         return;
       }
 

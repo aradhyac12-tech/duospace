@@ -167,11 +167,11 @@ const FloatingDock = () => {
     >
       <div
         className={cn(
-          "pointer-events-auto flex items-center gap-2 px-1.5 py-1 rounded-full",
-          "bg-card/85 backdrop-blur-md border border-border/25",
-          "shadow-[0_4px_16px_-6px_hsl(var(--foreground)/0.18)]",
+          "pointer-events-auto flex items-center gap-2 px-2 py-1.5 rounded-full",
+          "glass-dock",
         )}
       >
+
         {PRIMARY.map((t) => renderTab(t))}
       </div>
     </motion.nav>

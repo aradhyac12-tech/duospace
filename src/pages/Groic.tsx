@@ -26,6 +26,18 @@ const MOODS = [
 
 const RECENT_KEY = "groic-recent";
 
+// Last-resort results if the edge function AND every public Piped mirror
+// fail (e.g. no connectivity to third-party hosts). Keeps search from
+// coming back completely empty; mirrors the server-side fallback pool.
+const STATIC_FALLBACK: SearchResult[] = [
+  { title: "Until I Found You", artist: "Stephen Sanchez", videoId: "GxldQ9eX2wo", duration: 177, thumbnail: "https://img.youtube.com/vi/GxldQ9eX2wo/hqdefault.jpg", url: "https://www.youtube.com/watch?v=GxldQ9eX2wo" },
+  { title: "Perfect", artist: "Ed Sheeran", videoId: "2Vv-BfVoq4g", duration: 263, thumbnail: "https://img.youtube.com/vi/2Vv-BfVoq4g/hqdefault.jpg", url: "https://www.youtube.com/watch?v=2Vv-BfVoq4g" },
+  { title: "lovely", artist: "Billie Eilish, Khalid", videoId: "V1Pl8CzNzCw", duration: 200, thumbnail: "https://img.youtube.com/vi/V1Pl8CzNzCw/hqdefault.jpg", url: "https://www.youtube.com/watch?v=V1Pl8CzNzCw" },
+  { title: "Night Changes", artist: "One Direction", videoId: "syFZfO_wfMQ", duration: 240, thumbnail: "https://img.youtube.com/vi/syFZfO_wfMQ/hqdefault.jpg", url: "https://www.youtube.com/watch?v=syFZfO_wfMQ" },
+  { title: "Heat Waves", artist: "Glass Animals", videoId: "mRD0-GxqHVo", duration: 238, thumbnail: "https://img.youtube.com/vi/mRD0-GxqHVo/hqdefault.jpg", url: "https://www.youtube.com/watch?v=mRD0-GxqHVo" },
+  { title: "Golden Hour", artist: "JVKE", videoId: "PEM0Vs8jf1w", duration: 209, thumbnail: "https://img.youtube.com/vi/PEM0Vs8jf1w/hqdefault.jpg", url: "https://www.youtube.com/watch?v=PEM0Vs8jf1w" },
+];
+
 // Rotating discovery queries so the default "Trending" section isn't the
 // same single hardcoded search every time — picks a different angle based
 // on time of day (and a bit of day-to-day variety) instead of one fixed string.
@@ -72,16 +84,27 @@ const Groic = () => {
       // Client-side fallback so Groic still works if the `music-search`
       // edge function isn't deployed / rate-limited / unauthorized.
       // We hit a public Piped instance directly from the browser.
+      //
+      // FIX: this used to try each instance with no timeout — a dead/slow
+      // mirror (pipedapi.kavin.rocks is gone; others go down often) could
+      // hang the request, making search feel completely broken instead of
+      // just degraded. Each attempt now aborts after 3s so we move on
+      // quickly, and if every instance fails we show a small curated set
+      // instead of nothing at all.
       try {
         const pipedInstances = [
-          "https://pipedapi.kavin.rocks",
           "https://pipedapi.adminforge.de",
           "https://api.piped.yt",
+          "https://pipedapi.r4fo.com",
+          "https://pipedapi.leptons.xyz",
         ];
         let fallback: SearchResult[] = [];
         for (const inst of pipedInstances) {
           try {
-            const res = await fetch(`${inst}/search?q=${encodeURIComponent(q.trim())}&filter=music_songs`);
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 3000);
+            const res = await fetch(`${inst}/search?q=${encodeURIComponent(q.trim())}&filter=music_songs`, { signal: controller.signal });
+            clearTimeout(timer);
             if (!res.ok) continue;
             const j = await res.json();
             fallback = (j.items || []).filter((i: any) => i.url && i.title).slice(0, 20).map((i: any) => {
@@ -98,13 +121,15 @@ const Groic = () => {
             if (fallback.length) break;
           } catch { /* try next instance */ }
         }
-        if (fallback.length) {
-          setResults(fallback);
-        } else {
-          toast({ title: "Search failed", description: (err as Error).message, variant: "destructive" });
+        if (fallback.length === 0) {
+          const needle = q.trim().toLowerCase();
+          fallback = STATIC_FALLBACK.filter(t => t.title.toLowerCase().includes(needle) || t.artist.toLowerCase().includes(needle));
+          if (fallback.length === 0) fallback = STATIC_FALLBACK;
         }
+        setResults(fallback);
       } catch {
-        toast({ title: "Search failed", description: (err as Error).message, variant: "destructive" });
+        setResults(STATIC_FALLBACK);
+        toast({ title: "Limited results — connection issue", description: (err as Error).message, variant: "destructive" });
       }
     }
     setLoading(false);

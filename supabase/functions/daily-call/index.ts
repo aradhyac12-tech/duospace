@@ -30,6 +30,21 @@ function isRoomRateLimited(userId: string): boolean {
   return false;
 }
 
+// BUG FIX: translate Daily.co's `{ error: "<code>", info: "<detail>" }`
+// error shape into a clear, actionable top-level message. Previously this
+// was buried under a `detail` field the client never unwrapped, so e.g.
+// "account-missing-payment-method" surfaced as a generic "Daily.co
+// rejected the request" toast with no indication of what to actually do.
+function formatDailyError(data: unknown, source: "self" | "partner" | "platform", status: number): string {
+  const d = (data ?? {}) as { error?: string; info?: string };
+  const whose = source === "self" ? "Your" : source === "partner" ? "Your partner's" : "The platform's";
+  if (d.error === "account-missing-payment-method") {
+    return `${whose} Daily.co account needs a payment method on file before it can be used for calls. Add a card at https://dashboard.daily.co/billing, then try again.`;
+  }
+  if (typeof d.info === "string" && d.info) return d.info;
+  return `Daily.co rejected the request (${d.error ?? status}).`;
+}
+
 async function resolveKey(userId: string, authHeader: string): Promise<{ key: string; source: "self" | "partner" | "platform" } | null> {
   const anon = createClient(
     Deno.env.get("SUPABASE_URL")!,
@@ -119,7 +134,12 @@ Deno.serve(async (req) => {
       if (!res.ok) {
         console.error("Daily API error:", res.status, data);
         return new Response(
-          JSON.stringify({ error: "Daily.co rejected the request", detail: data, keySource: resolved.source }),
+          JSON.stringify({
+            error: formatDailyError(data, resolved.source, res.status),
+            code: data?.error ?? null,
+            detail: data,
+            keySource: resolved.source,
+          }),
           { status: res.status, headers: { ...corsHeaders, "Content-Type": "application/json" } },
         );
       }
@@ -145,7 +165,12 @@ Deno.serve(async (req) => {
       if (!res.ok) {
         console.error("Daily token API error:", res.status, data);
         return new Response(
-          JSON.stringify({ error: "Daily.co token request failed", detail: data }),
+          JSON.stringify({
+            error: formatDailyError(data, resolved.source, res.status),
+            code: data?.error ?? null,
+            detail: data,
+            keySource: resolved.source,
+          }),
           { status: res.status, headers: { ...corsHeaders, "Content-Type": "application/json" } },
         );
       }

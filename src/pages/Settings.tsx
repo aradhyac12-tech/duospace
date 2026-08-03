@@ -477,11 +477,38 @@ const Settings = () => {
     if (!user) return;
     setImportingWhatsApp(true);
     setImportProgress(`Importing ${parsed.length} messages…`);
+
+    // FIX (messages appearing out of order / "in the middle" after import):
+    // WhatsApp .txt exports only carry minute-level precision ("3:45 PM",
+    // no seconds), so a fast back-and-forth burst can have a dozen+
+    // consecutive messages sharing the exact same original_timestamp.
+    // `parsed` is already in true chronological order (the file's own line
+    // order), but ties in original_timestamp then had to be broken by
+    // Postgres/JS as an arbitrary UUID comparison — reshuffling bursts
+    // unpredictably relative to each other, and any tie with a live
+    // real-time message's created_at could land it in that same jumbled
+    // window. Nudging duplicate timestamps apart by 1ms each, in file
+    // order, makes every stored timestamp unique and preserves the real
+    // send order with no schema change and no effect on same-day accuracy.
+    const nudged = parsed.map((msg, i) => {
+      if (i === 0) return msg;
+      const prevTs = parsed[i - 1].timestamp.getTime();
+      if (msg.timestamp.getTime() > prevTs) return msg;
+      return { ...msg, timestamp: new Date(prevTs + 1) };
+    });
+    // Second pass so nudges themselves can't re-collide with the next
+    // original (unnudged) entry — walk again enforcing strict monotonicity.
+    for (let i = 1; i < nudged.length; i++) {
+      if (nudged[i].timestamp.getTime() <= nudged[i - 1].timestamp.getTime()) {
+        nudged[i] = { ...nudged[i], timestamp: new Date(nudged[i - 1].timestamp.getTime() + 1) };
+      }
+    }
+
     const BATCH = 100;
     let inserted = 0;
     let failed = 0;
-    for (let i = 0; i < parsed.length; i += BATCH) {
-      const batch = parsed.slice(i, i + BATCH).map(msg => ({
+    for (let i = 0; i < nudged.length; i += BATCH) {
+      const batch = nudged.slice(i, i + BATCH).map(msg => ({
         owner_id: user.id,
         sender_name: msg.sender,
         content: msg.content,
@@ -495,7 +522,7 @@ const Settings = () => {
       } else {
         inserted += batch.length;
       }
-      setImportProgress(`Importing… ${Math.min(i + BATCH, parsed.length)}/${parsed.length}`);
+      setImportProgress(`Importing… ${Math.min(i + BATCH, nudged.length)}/${nudged.length}`);
     }
 
     if (failed > 0 && inserted === 0) {

@@ -67,44 +67,75 @@ interface PipedItem {
   thumbnail?: string; duration?: number;
 }
 
+// FIX: a dead/slow Piped mirror used to be able to hang this whole function
+// past the client's 15s timeout — with 2 filters x 5 instances = up to 10
+// sequential fetches and no per-request deadline, one unresponsive instance
+// (common now that several public Piped mirrors are gone or overloaded)
+// silently ate the entire time budget before we ever reached the reliable
+// static fallbackResults() below. Each attempt now gets its own short
+// timeout so a hung instance is skipped in ~3s instead of stalling everything.
+async function fetchWithTimeout(url: string, ms: number): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  try {
+    return await fetch(url, { headers: { "User-Agent": "DuoSpace/1.0" }, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// BUG FIX ("music search not working"): this used to loop 2 filters x 5
+// instances SEQUENTIALLY, each with its own 3s timeout — up to 10 x 3s =
+// 30s worst case when every public Piped mirror is dead or slow (common;
+// these are volunteer-run and churn constantly). But the client
+// (invokeEdgeFunction) gives up after 15s and throws a timeout error, so
+// the user saw a hard "Search failed" toast roughly half the time — long
+// before this function ever reached the guaranteed fallbackResults()
+// below. The fix: race all instances in parallel (single filter) so the
+// whole attempt finishes in ~3s even in the worst case, leaving plenty of
+// budget to fall through to fallbackResults() well inside the 15s window.
 async function searchPiped(query: string): Promise<MusicResult[]> {
   const instances = [
-    "https://pipedapi.kavin.rocks",
     "https://pipedapi.adminforge.de",
     "https://api.piped.yt",
     "https://pipedapi.r4fo.com",
     "https://pipedapi.leptons.xyz",
+    "https://piped-api.privacy.com.de",
   ];
-  const filters = ["music_songs", "videos"];
-  for (const filter of filters) {
-    for (const inst of instances) {
-      try {
-        const res = await fetch(
-          `${inst}/search?q=${encodeURIComponent(query)}&filter=${filter}`,
-          { headers: { "User-Agent": "DuoSpace/1.0" } },
-        );
-        if (!res.ok) { await res.text(); continue; }
-        const data = await res.json();
-        const items = (data.items as PipedItem[] | undefined) ?? [];
-        const mapped = items
-          .filter((i) => i.url && i.title)
-          .slice(0, 20)
-          .map((i): MusicResult => {
-            const videoId = i.url!.replace("/watch?v=", "");
-            return {
-              title: i.title ?? "Unknown",
-              artist: i.uploaderName ?? "Unknown",
-              videoId,
-              thumbnail: i.thumbnail ?? `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`,
-              duration: i.duration ?? 0,
-              url: `https://www.youtube.com/watch?v=${videoId}`,
-            };
-          });
-        if (mapped.length > 0) return mapped;
-      } catch (err) {
-        console.warn("piped instance failed", inst, err);
-      }
-    }
+  const filter = "music_songs";
+
+  const attempts = instances.map(async (inst): Promise<MusicResult[]> => {
+    const res = await fetchWithTimeout(
+      `${inst}/search?q=${encodeURIComponent(query)}&filter=${filter}`,
+      3000,
+    );
+    if (!res.ok) { await res.text(); throw new Error(`${inst} returned ${res.status}`); }
+    const data = await res.json();
+    const items = (data.items as PipedItem[] | undefined) ?? [];
+    const mapped = items
+      .filter((i) => i.url && i.title)
+      .slice(0, 20)
+      .map((i): MusicResult => {
+        const videoId = i.url!.replace("/watch?v=", "");
+        return {
+          title: i.title ?? "Unknown",
+          artist: i.uploaderName ?? "Unknown",
+          videoId,
+          thumbnail: i.thumbnail ?? `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`,
+          duration: i.duration ?? 0,
+          url: `https://www.youtube.com/watch?v=${videoId}`,
+        };
+      });
+    if (mapped.length === 0) throw new Error(`${inst} returned no usable items`);
+    return mapped;
+  });
+
+  const settled = await Promise.allSettled(attempts);
+  for (const result of settled) {
+    if (result.status === "fulfilled" && result.value.length > 0) return result.value;
+  }
+  for (const result of settled) {
+    if (result.status === "rejected") console.warn("piped instance failed", result.reason);
   }
   return [];
 }

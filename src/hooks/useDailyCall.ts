@@ -68,6 +68,18 @@ export const useDailyCall = (): UseDailyCallReturn => {
   // Previously lived in joinCall closure → fired setState on unmounted instance.
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = useRef(true);
+  // BUG FIX: "Duplicate DailyIframe instances are not allowed"
+  // Root cause: joinCall is async and does its duplicate-cleanup check
+  // (`if (callRef.current) {...}`) synchronously at the top, but a fast
+  // double-tap of the call button (very easy on mobile, before React
+  // re-renders the disabled state) invoked joinCall() twice. Both
+  // invocations read callRef.current as null before either had a chance
+  // to assign its new call object, so DailyIframe.createCallObject() ran
+  // twice concurrently — Daily's SDK throws when a second instance exists
+  // anywhere on the page. This ref is a synchronous lock set *before* any
+  // await, so a second concurrent call is rejected immediately instead of
+  // racing.
+  const joinInProgressRef = useRef(false);
 
   const cleanupAudioElements = useCallback(() => {
     audioElemsRef.current.forEach(a => { a.srcObject = null; a.remove(); });
@@ -102,6 +114,15 @@ export const useDailyCall = (): UseDailyCallReturn => {
   // — this meant the camera briefly opened (LED flash on device) before being disabled.
   // Now: pass startVideoOff: true to Daily.co so it never activates the camera.
   const joinCall = useCallback(async (url: string, token?: string, videoOff = false) => {
+    // Synchronous re-entrancy guard — must run before any `await` so a
+    // second concurrent invocation (double-tap, double-accept, etc.) is
+    // rejected immediately instead of racing past the callRef.current
+    // check below and creating two DailyIframe instances at once.
+    if (joinInProgressRef.current) {
+      console.warn('[useDailyCall] joinCall already in progress — ignoring duplicate call');
+      return;
+    }
+    joinInProgressRef.current = true;
     try {
       setCallState("joining");
       setError(null);
@@ -218,11 +239,18 @@ export const useDailyCall = (): UseDailyCallReturn => {
       /* AUDIT FIX #16: join error captured via setError — removed console.error */
       setError(extractErrorMessage(err, "Failed to join call"));
       setCallState("error");
+    } finally {
+      // Release the lock once join() has settled either way. Note this is
+      // intentionally NOT tied to call duration — it only guards the
+      // create+join sequence itself, so leaveCall()/a fresh joinCall() can
+      // still run right after.
+      joinInProgressRef.current = false;
     }
   }, [attachTrack, attachAudioTrack, cleanupAudioElements]);
 
   // CALL-04 FIX: leaveCall is safe even if callState is "joining"
   const leaveCall = useCallback(() => {
+    joinInProgressRef.current = false;
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
     if (reconnectTimerRef.current) { clearTimeout(reconnectTimerRef.current); reconnectTimerRef.current = null; }
     cleanupAudioElements();

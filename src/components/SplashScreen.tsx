@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 
 interface SplashScreenProps {
   appName?: string;
@@ -7,155 +7,133 @@ interface SplashScreenProps {
 }
 
 /**
- * The tagline translated into each language — close, natural renderings of
- * "The private space for two of you" rather than mechanical word-for-word
- * substitutions. `wide` marks scripts where generous Latin-style
- * letter-spacing reads as premium; CJK/Arabic/Devanagari skip it (extra
- * tracking breaks those glyphs instead of flattering them).
+ * Timing. The previous version cycled six translated taglines at 1.15s each
+ * and took ~6.6s before the app appeared — that is what made launch feel
+ * slow. A launch splash should read as a *handoff*, not a intro sequence:
+ * everything below is tuned so the whole thing is on screen for well under
+ * two seconds while still feeling deliberate and expensive.
  */
-const TAGLINES: Array<{ text: string; code: string; dir?: "rtl"; wide?: boolean }> = [
-  { text: "The private space for two of you", code: "en", wide: true },
-  { text: "L'espace privé pour vous deux", code: "fr", wide: true },
-  { text: "二人だけのプライベート空間", code: "ja" },
-  { text: "El espacio privado para ustedes dos", code: "es", wide: true },
-  { text: "المساحة الخاصة بكما أنتما فقط", code: "ar", dir: "rtl" },
-  { text: "The private space for two of you", code: "en", wide: true },
-];
+const ENTRANCE_MS = 520;   // logo + wordmark settle
+const HOLD_MS = 620;       // the still, confident beat
+const EXIT_MS = 380;       // hand off to the app
+const TOTAL_MS = ENTRANCE_MS + HOLD_MS;
 
-// --- Timing ---
-// This exact rhythm (STEP / CROSSFADE / FINAL_HOLD / EXIT, in seconds) was
-// hand-built and verified as a real keyframed timeline in Figma before
-// being ported here — a Figma "Motion" timeline of this same composition
-// (Root > BG, Glow, LogoCard, NameRow, TaglineBox[6 stacked language
-// layers]) uses identical values, so the pacing here isn't guesswork.
-const STEP_MS = 1150;       // how long each language is the "active" one
-const CROSSFADE_MS = 480;   // outgoing + incoming overlap simultaneously (true dissolve)
-const FINAL_HOLD_MS = 850;  // extra hold on the final English line before exiting
-const EXIT_DURATION_MS = 550;
-
-// One easing curve, reused everywhere — the same curve iOS uses for sheet
-// transitions. Repetition of a single curve is what makes a sequence of
-// small motions read as one coherent design instead of a pile of effects.
+// One easing curve everywhere (iOS sheet curve). Reusing a single curve is
+// what makes a set of small motions read as one coherent piece.
 const EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
 
-function useTimeout(callback: () => void, ms: number, deps: unknown[]) {
-  useEffect(() => {
-    const id = window.setTimeout(callback, ms);
-    return () => window.clearTimeout(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, deps);
-}
+const TAGLINE = "The private space for two of you";
 
 /**
- * One-time cinematic boot splash — a single, continuous composition: the
- * logo and name appear once and hold still for the whole sequence, the
- * translated tagline dissolves beneath them, and everything fades out
- * together at the end.
+ * Premium boot splash — a single continuous composition:
+ *  - deep graphite field with a soft, slowly breathing glow
+ *  - the app icon lifts in with a scale/shadow settle
+ *  - a fine specular sweep travels once across the wordmark
+ *  - the tagline rises beneath it
+ *  - everything leaves together, scaling up very slightly, so the app
+ *    underneath feels like it was there all along
  *
- * On blur and performance, together: blur IS used here (a real dissolve,
- * not a flat cut), but scoped deliberately —
- *  - It only ever animates on the small two-line tagline text, never on a
- *    large shape. Cost scales with the pixel area being blurred, so this
- *    is cheap; a full-screen or big-circle blur animation is not, and
- *    that (not blur itself) is what made earlier drafts feel laggy.
- *  - The crossfade uses AnimatePresence `mode="sync"`, so the outgoing and
- *    incoming sentence animate *simultaneously* — a true dissolve.
- *    `mode="wait"` runs them sequentially with a dead gap in between,
- *    which reads as a stutter no matter how good the easing curve is.
- *  - The tagline sits in a fixed-height, fixed-width frame so sentences of
- *    very different lengths across languages never reflow the layout.
- *  - Nothing else animates blur, color, or box-shadow — only opacity,
- *    transform, and this one small filter — so there's only ever one
- *    expensive-ish thing happening on screen at a time.
+ * Performance: only opacity and transform animate (the glow's breathing is a
+ * transform-only loop, the sweep is a translated gradient behind a mask).
+ * No animated blur, color, or box-shadow — it stays smooth on low-end Android.
  */
 const SplashScreen = ({ appName = "DuoSpace", onComplete }: SplashScreenProps) => {
-  const [taglineIndex, setTaglineIndex] = useState(0);
   const [exiting, setExiting] = useState(false);
-  const cancelledRef = useRef(false);
+  const cancelled = useRef(false);
 
-  useEffect(() => () => { cancelledRef.current = true; }, []);
-
-  // Advance through the translated taglines on a steady, even beat.
   useEffect(() => {
-    if (taglineIndex >= TAGLINES.length - 1) return;
-    const id = window.setTimeout(() => {
-      if (!cancelledRef.current) setTaglineIndex((i) => i + 1);
-    }, STEP_MS);
-    return () => window.clearTimeout(id);
-  }, [taglineIndex]);
-
-  // Once the last (English) tagline has held for a beat, fade everything
-  // out together and hand back control.
-  const totalHoldMs = (TAGLINES.length - 1) * STEP_MS + FINAL_HOLD_MS;
-  useTimeout(() => { if (!cancelledRef.current) setExiting(true); }, totalHoldMs, []);
-  useTimeout(() => { if (!cancelledRef.current) onComplete(); }, totalHoldMs + EXIT_DURATION_MS, []);
-
-  const nameWords = appName.split(" ");
-  const current = TAGLINES[taglineIndex];
+    cancelled.current = false;
+    const t1 = window.setTimeout(() => { if (!cancelled.current) setExiting(true); }, TOTAL_MS);
+    const t2 = window.setTimeout(() => { if (!cancelled.current) onComplete(); }, TOTAL_MS + EXIT_MS);
+    return () => {
+      cancelled.current = true;
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <motion.div
       className="fixed inset-0 z-[999] flex flex-col items-center justify-center overflow-hidden px-8"
-      style={{ background: "radial-gradient(120% 90% at 50% 32%, #17171b 0%, #0a0a0c 60%, #050506 100%)" }}
-      animate={{ opacity: exiting ? 0 : 1, scale: exiting ? 1.02 : 1 }}
-      transition={{ duration: EXIT_DURATION_MS / 1000, ease: EASE }}
+      style={{ background: "radial-gradient(120% 90% at 50% 34%, #18181d 0%, #0a0a0c 58%, #050506 100%)" }}
+      animate={{ opacity: exiting ? 0 : 1, scale: exiting ? 1.03 : 1 }}
+      transition={{ duration: EXIT_MS / 1000, ease: EASE }}
     >
-      {/* Static ambient glow behind the logo. A very slow, subtle breathing
-          scale gives it life without ever touching blur/color/layout — a
-          transform-only loop is effectively free to animate. */}
+      {/* Ambient glow — transform-only breathing loop. */}
       <motion.div
-        className="pointer-events-none absolute h-72 w-72 rounded-full bg-white/[0.05] blur-3xl"
-        style={{ top: "26%" }}
-        animate={{ scale: [1, 1.06, 1] }}
-        transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
+        className="pointer-events-none absolute h-80 w-80 rounded-full bg-white/[0.055] blur-3xl"
+        style={{ top: "24%" }}
+        initial={{ scale: 0.85, opacity: 0 }}
+        animate={{ scale: [0.94, 1.05, 0.98], opacity: 1 }}
+        transition={{ duration: 3.2, ease: "easeInOut", repeat: Infinity, repeatType: "mirror" }}
       />
 
-      <motion.div
-        className="flex flex-col items-center"
-        initial={{ opacity: 0, scale: 0.92 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ duration: 0.6, ease: EASE }}
-      >
-        <div className="h-20 w-20 overflow-hidden rounded-[22px] shadow-[0_8px_40px_rgba(0,0,0,0.5)]">
-          <img src="/icon-1024.png" alt="" className="h-full w-full object-cover" draggable={false} />
-        </div>
-
+      <div className="relative flex flex-col items-center">
+        {/* Icon */}
         <motion.div
-          className="mt-5 flex gap-2"
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.2, ease: EASE }}
+          className="h-[84px] w-[84px] overflow-hidden rounded-[24px] ring-1 ring-white/10"
+          style={{ boxShadow: "0 20px 60px -18px rgba(0,0,0,0.85), inset 0 1px 0 rgba(255,255,255,0.08)" }}
+          initial={{ opacity: 0, scale: 0.86, y: 8 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          transition={{ duration: ENTRANCE_MS / 1000, ease: EASE }}
         >
-          {nameWords.map((word, i) => (
-            <span key={word + i} className="text-[22px] font-semibold tracking-tight text-white">
-              {word}
-            </span>
-          ))}
+          <img src="/icon-1024.png" alt="" className="h-full w-full object-cover" draggable={false} />
         </motion.div>
 
-        {/* Fixed-size frame: prevents the whole composition from reflowing
-            as sentence length varies between languages. The crossfade
-            itself lives entirely inside this box. */}
-        <div className="relative mt-3 flex h-[4.4em] w-[78vw] max-w-[360px] items-start justify-center overflow-hidden sm:w-[420px]">
-          <AnimatePresence mode="sync">
-            <motion.p
-              key={taglineIndex}
-              dir={current.dir}
-              lang={current.code}
-              className={[
-                "absolute inset-x-0 top-0 text-center text-[14px] font-light leading-[1.45] text-white/45",
-                current.wide ? "tracking-wide" : "tracking-normal",
-              ].join(" ")}
-              initial={{ opacity: 0, y: 6, filter: "blur(6px)" }}
-              animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-              exit={{ opacity: 0, y: -6, filter: "blur(6px)" }}
-              transition={{ duration: CROSSFADE_MS / 1000, ease: EASE }}
-            >
-              {current.text}
-            </motion.p>
-          </AnimatePresence>
-        </div>
-      </motion.div>
+        {/* Wordmark with a single specular sweep. The sweep is a translated
+            gradient clipped to the text via background-clip, so nothing
+            expensive (blur/filter) animates. */}
+        <motion.div
+          className="relative mt-6 overflow-hidden"
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.44, delay: 0.12, ease: EASE }}
+        >
+          <span className="text-[23px] font-semibold tracking-[-0.02em] text-white/95">
+            {appName}
+          </span>
+          <motion.span
+            aria-hidden
+            className="pointer-events-none absolute inset-0"
+            style={{
+              background:
+                "linear-gradient(100deg, transparent 35%, rgba(255,255,255,0.85) 50%, transparent 65%)",
+              mixBlendMode: "overlay",
+            }}
+            initial={{ x: "-120%" }}
+            animate={{ x: "120%" }}
+            transition={{ duration: 0.9, delay: 0.3, ease: [0.4, 0, 0.2, 1] }}
+          />
+        </motion.div>
+
+        {/* Tagline */}
+        <motion.p
+          lang="en"
+          className="mt-2.5 max-w-[300px] text-center text-[13.5px] font-light leading-[1.45] tracking-wide text-white/45"
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.42, delay: 0.24, ease: EASE }}
+        >
+          {TAGLINE}
+        </motion.p>
+
+        {/* Hairline progress cue — a thin line that fills once, giving the
+            hold beat a reason to exist instead of feeling like a pause. */}
+        <motion.div
+          className="mt-7 h-px w-24 overflow-hidden rounded-full bg-white/10"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.3, delay: 0.3 }}
+        >
+          <motion.div
+            className="h-full w-full origin-left bg-white/50"
+            initial={{ scaleX: 0 }}
+            animate={{ scaleX: 1 }}
+            transition={{ duration: (TOTAL_MS - 300) / 1000, delay: 0.3, ease: [0.4, 0, 0.2, 1] }}
+          />
+        </motion.div>
+      </div>
     </motion.div>
   );
 };

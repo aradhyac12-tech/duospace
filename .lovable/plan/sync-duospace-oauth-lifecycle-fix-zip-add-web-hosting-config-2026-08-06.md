@@ -29,3 +29,29 @@ Lovable pushes the repo automatically once GitHub is connected via the chat's pl
 - All hosting configs are static-SPA only; no server runtime, so auth keeps working through the existing client-side Supabase flow.
 - New deploy domains must be added to Supabase Auth redirect URLs and to the Google OAuth client's authorized origins, or Google sign-in will fail on those domains — documented in `DEPLOY.md`.
 - Out of scope: native APK/iOS work, chat/calls/other features beyond what the zip changes.
+
+Also solve the issue of Build failed
+
+&nbsp;
+
+these Capacitor plugins were not registered in the native Android project: $MISSING2"[0m
+
+&nbsp;
+
+2026-08
+
+```
+2026-08-06T11:02:37.1440867Z 
+2026-08-06T11:02:37.1440879Z 
+2026-08-06T11:02:37.1440978Z Totals:
+2026-08-06T11:02:37.1441273Z android: 74 generated, 2.45 MB total
+2026-08-06T11:02:37.1564450Z [icon] Native icon/splash resources generated
+2026-08-06T11:02:37.6830738Z [error] "." is not a valid value for webDir
+2026-08-06T11:02:37.6840598Z [sync] First cap sync failed — retrying after npm install (auto-repair)
+2026-08-06T11:02:38.4257553Z 
+2026-08-06T11:02:38.4258135Z removed 7 packages in 701ms
+2026-08-06T11:02:38.9432708Z [error] "." is not a valid value for webDir
+2026-08-06T11:02:38.9443015Z PREBUILD_VALIDATION_FAILED: cap sync android failed. Native plugins could not be synchronized.
+2026-08-06T11:02:38.9448277Z ##[error]cap sync android failed. Native plugins could not be synchronized.
+2026-08-06T11:02:38.9450769Z ##[error]Process completed with exit code 1.
+```

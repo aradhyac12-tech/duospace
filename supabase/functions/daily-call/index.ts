@@ -35,10 +35,24 @@ function isRoomRateLimited(userId: string): boolean {
 // was buried under a `detail` field the client never unwrapped, so e.g.
 // "account-missing-payment-method" surfaced as a generic "Daily.co
 // rejected the request" toast with no indication of what to actually do.
+//
+// FURTHER FIX: the original check was an exact `d.error ===
+// "account-missing-payment-method"` match. If Daily puts that code
+// somewhere other than exactly the top-level `error` field for a given
+// endpoint/API version (e.g. nested inside `info`, a different casing, or
+// with underscores instead of hyphens) — which isn't verifiable from here
+// without hitting Daily's live API — the exact match silently misses and
+// falls through to whatever raw text Daily sent, which is exactly the
+// unfriendly "account-missing-payment-method" string reported. Matching
+// on a normalized, combined blob of every string field instead means the
+// friendly message still shows up regardless of which exact field Daily
+// used for it.
 function formatDailyError(data: unknown, source: "self" | "partner" | "platform", status: number): string {
-  const d = (data ?? {}) as { error?: string; info?: string };
+  const d = (data ?? {}) as { error?: string; info?: string; message?: string };
   const whose = source === "self" ? "Your" : source === "partner" ? "Your partner's" : "The platform's";
-  if (d.error === "account-missing-payment-method") {
+  const haystack = `${d.error ?? ""} ${d.info ?? ""} ${d.message ?? ""}`.toLowerCase();
+  if (haystack.includes("missing-payment-method") || haystack.includes("missing_payment_method")
+      || (haystack.includes("payment") && haystack.includes("method"))) {
     return `${whose} Daily.co account needs a payment method on file before it can be used for calls. Add a card at https://dashboard.daily.co/billing, then try again.`;
   }
   if (typeof d.info === "string" && d.info) return d.info;
@@ -177,6 +191,101 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ token: data.token }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    // BUG FIX (call latency): starting a call used to be two fully
+    // sequential client -> edge-function round trips ("create-room" then,
+    // only after that resolved, "get-token") before joinCall() could even
+    // begin — each paying its own network latency plus Supabase Functions
+    // invoke overhead. Since get-token only needs the room name (which the
+    // client already knows — it generates it before calling create-room),
+    // both Daily API calls can happen back-to-back on the server within a
+    // single client round trip instead. Kept "create-room"/"get-token" as
+    // separate actions too (delete-room and any other caller still uses
+    // them individually), this is purely an additional fast path.
+    if (action === "create-and-token") {
+      if (isRoomRateLimited(user.id)) {
+        return new Response(
+          JSON.stringify({ error: "Rate limit: max 2 rooms per minute. Please wait before starting another call." }),
+          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json", "Retry-After": "60" } },
+        );
+      }
+
+      const finalRoomName = roomName || `duo-${Date.now()}`;
+      const roomRes = await fetch("https://api.daily.co/v1/rooms", {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${DAILY_API_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: finalRoomName,
+          properties: {
+            exp: Math.floor(Date.now() / 1000) + 86400,
+            enable_chat: false,
+            enable_knocking: false,
+            max_participants: 2,
+            enable_network_ui: false,
+            enable_prejoin_ui: false,
+            enable_screenshare: true,
+            enable_recording: false,
+            start_video_off: false,
+            start_audio_off: false,
+            sfu_switchover: 0.5,
+          },
+        }),
+      });
+      const roomData = await roomRes.json();
+      if (!roomRes.ok) {
+        console.error("Daily API error (create-and-token/room):", roomRes.status, roomData);
+        return new Response(
+          JSON.stringify({
+            error: formatDailyError(roomData, resolved.source, roomRes.status),
+            code: roomData?.error ?? null,
+            detail: roomData,
+            keySource: resolved.source,
+          }),
+          { status: roomRes.status, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+
+      const tokenRes = await fetch("https://api.daily.co/v1/meeting-tokens", {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${DAILY_API_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          properties: {
+            room_name: roomData.name,
+            exp: Math.floor(Date.now() / 1000) + 7200,
+            is_owner: false,
+            enable_screenshare: true,
+          },
+        }),
+      });
+      const tokenData = await tokenRes.json();
+      if (!tokenRes.ok) {
+        console.error("Daily API error (create-and-token/token):", tokenRes.status, tokenData);
+        // The room was already created — best-effort clean it up rather
+        // than leaving an orphaned room behind since the call is failing
+        // to start anyway.
+        fetch(`https://api.daily.co/v1/rooms/${roomData.name}`, {
+          method: "DELETE",
+          headers: { "Authorization": `Bearer ${DAILY_API_KEY}` },
+        }).catch(() => {});
+        return new Response(
+          JSON.stringify({
+            error: formatDailyError(tokenData, resolved.source, tokenRes.status),
+            code: tokenData?.error ?? null,
+            detail: tokenData,
+            keySource: resolved.source,
+          }),
+          { status: tokenRes.status, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+
+      return new Response(
+        JSON.stringify({
+          url: roomData.url, name: roomData.name, id: roomData.id,
+          token: tokenData.token, keySource: resolved.source,
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
     }
 
     if (action === "delete-room") {

@@ -20,12 +20,13 @@ import ChatSurpriseHost from "@/components/chat/ChatSurpriseHost";
 import ScheduledMessagePicker from "@/components/chat/ScheduledMessagePicker";
 import LoveLetter from "@/components/chat/LoveLetter";
 import LipReadingOverlay from "@/components/LipReadingOverlay";
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from "react";
 import { useLongPress } from "@/hooks/useLongPress";
 import { useNavigate } from "react-router-dom";
 import { useTheme } from "@/contexts/ThemeContext";
 import { resolveWallpaperStyle } from "@/lib/wallpapers";
 import DisappearGestureHandle from "@/components/chat/DisappearGestureHandle";
+import DisappearRing from "@/components/chat/DisappearRing";
 import { supabase } from "@/integrations/supabase/client";
 import { playMessageSound, playCallSound } from "@/lib/sounds";
 import { hapticTick, hapticLight, hapticMedium, hapticSelection, hapticWarning, hapticError, hapticMessageSent, hapticSend, hapticSwipe } from "@/lib/haptics";
@@ -33,7 +34,7 @@ import { routePreload } from "@/App";
 import { useAuth } from "@/hooks/useAuth";
 import { useE2E } from "@/hooks/useE2E";
 import storage from "@/lib/storage";
-import { useDailyCall } from "@/hooks/useDailyCall";
+import { useCall } from "@/contexts/CallContext";
 import { useMediaPermission } from "@/components/PermissionDeniedSheet";
 import { useToast } from "@/hooks/use-toast";
 import { invokeEdgeFunction } from "@/lib/edgeFunction";
@@ -271,11 +272,42 @@ const MessageBubble = ({
   const replyIconOpacity = useTransform(dragX, [0, REPLY_THRESHOLD], [0, 1]);
   const replyIconScale = useTransform(dragX, [0, REPLY_THRESHOLD], [0.6, 1]);
   const swipeFiredRef = useRef(false);
+
+  // POLISH (premium disappearing-message countdown): totalMs/remainingMs
+  // for the ring, and a CSS animation-delay for the "about to vanish"
+  // glow — both computed once from the message's own created_at/
+  // disappear_at rather than a ticking React state, so a chat full of
+  // disappearing messages never re-renders once a second per bubble.
+  // Memoized on the message's own identity (not on the current render's
+  // Date.now()) — otherwise an unrelated re-render (a reaction landing, the
+  // typing indicator flipping, etc.) would recompute a new animation-delay
+  // each time and restart the CSS pulse/ring from scratch instead of
+  // letting it run continuously toward the real expiry instant.
+  const disappearTiming = useMemo(() => {
+    if (!isDisappearing || !msg.disappear_at) return null;
+    const total = new Date(msg.disappear_at).getTime() - new Date(msg.created_at).getTime();
+    const remaining = new Date(msg.disappear_at).getTime() - Date.now();
+    return { totalMs: Math.max(1, total), remainingMs: Math.max(0, remaining) };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDisappearing, msg.disappear_at, msg.created_at]);
+  const IMMINENT_WINDOW_MS = 2500;
+
   return (
     <motion.div id={`msg-${msg.id}`}
       layout="position"
-      initial={{ opacity: 0, y: 4, scale: 1 }} animate={{ opacity: isDisappearing ? 0.6 : 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.94, filter: "blur(3px)", transition: { type: "spring", stiffness: 260, damping: 30 } }}
+      initial={{ opacity: 0, y: 4, scale: 1 }} animate={{ opacity: isDisappearing ? 0.75 : 1, y: 0, scale: 1 }}
+      exit={isDisappearing ? {
+        // POLISH: disappearing messages get their own distinct "evaporate"
+        // exit — a slower, softer upward dissolve — instead of reusing the
+        // sharp pop used for a manual delete, so the two read as visually
+        // different actions (one intentional and instant, one gentle and
+        // expected).
+        opacity: 0, scale: 0.88, y: -10, filter: "blur(8px)",
+        transition: { duration: 0.55, ease: [0.4, 0, 0.2, 1] },
+      } : {
+        opacity: 0, scale: 0.94, filter: "blur(3px)",
+        transition: { type: "spring", stiffness: 260, damping: 30 },
+      }}
       transition={{ duration: 0.15, ease: "easeOut", layout: { duration: 0.3, ease: "easeOut" } }}
       className={`flex ${isMine?"justify-end":"justify-start"} group ${isFirstInGroup ? "pt-2" : "pt-[1px]"} ${
         isActiveResult  ? "ring-2 ring-primary rounded-2xl"
@@ -325,11 +357,28 @@ const MessageBubble = ({
             </div>
           ) : <div className="w-6 shrink-0" />
         )}
-        <div className={`rounded-2xl px-3 py-2 select-none ${
+        <div className={`relative rounded-2xl px-3 py-2 select-none ${
           isMine
             ? `bg-primary text-primary-foreground ${isLastInGroup ? "rounded-br-md" : "rounded-br-2xl"}`
             : `bg-card/70 backdrop-blur-md border border-border/30 ${isLastInGroup ? "rounded-bl-md" : "rounded-bl-2xl"}`
         } ${isDisappearing ? "ring-1 ring-primary/20" : ""}`}>
+          {/* POLISH: a soft glow that breathes on in just the last ~2.5s
+              before this specific message vanishes — pure CSS, timed via
+              animation-delay from this message's own remaining time, no
+              JS ticking involved. Builds a little anticipation right
+              before the message actually disappears instead of it just
+              vanishing with no warning. */}
+          {disappearTiming && (
+            <div
+              aria-hidden="true"
+              className="absolute -inset-px rounded-2xl pointer-events-none"
+              style={{
+                animation: "disappear-imminent 2.5s ease-in-out both",
+                animationDelay: `${Math.max(0, disappearTiming.remainingMs - IMMINENT_WINDOW_MS)}ms`,
+                boxShadow: "0 0 0 1.5px hsl(var(--primary)), 0 0 14px 2px hsl(var(--primary) / 0.4)",
+              }}
+            />
+          )}
           {repliedMsg && (
             <QuotedMessage content={repliedMsg.decryptedContent||"Message"}
               senderName={repliedMsg.sender_id===userId?"You":partnerName} isMine={isMine} />
@@ -383,7 +432,13 @@ const MessageBubble = ({
             <p className="text-[14px] leading-relaxed whitespace-pre-wrap">{msg.decryptedContent}</p>
           )}
           <div className={`flex items-center gap-1 mt-0.5 ${isMine?"justify-end":""}`}>
-            {isDisappearing && <Timer className="h-2.5 w-2.5 opacity-30" />}
+            {isDisappearing && disappearTiming && (
+              <DisappearRing
+                totalMs={disappearTiming.totalMs}
+                remainingMs={disappearTiming.remainingMs}
+                className={isMine ? "text-primary-foreground/70" : "text-muted-foreground/60"}
+              />
+            )}
             {msg.edited_at && <Pencil className="h-2 w-2 opacity-30" />}
             <span className={`text-[10px] font-mono ${isMine?"text-primary-foreground/70":"text-muted-foreground/60"}`}>
               {formatTime(msg.created_at)}
@@ -448,6 +503,23 @@ const Chat = () => {
   const cameraInputRef  = useRef<HTMLInputElement>(null);
   const messagesEndRef  = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  // BUG FIX ("scroll loading" — visible scroll animation every time chat
+  // opens/loads): the auto-scroll effect used to fire `scrollIntoView`
+  // with `behavior: "smooth"` on every messages.length change, including
+  // the very first cold-start load of a conversation — so the person
+  // watched the whole conversation visibly fly by from top to bottom
+  // every single time they opened a chat. `didInitialScrollRef` tracks,
+  // per conversation, whether that first jump-to-bottom has already
+  // happened; once it has, later genuinely-new messages still get the
+  // nice smooth slide-in, but the first paint never animates — it should
+  // just already *be* at the bottom, with anything older loading in
+  // silently behind it (see the layout effect below and loadMoreMessages).
+  const didInitialScrollRef = useRef(false);
+  // Captured right before fetching an older page so the scroll position
+  // can be restored after older messages are prepended — otherwise every
+  // "Load older messages" tap visibly yanks the viewport since the
+  // content the person was reading just got pushed further down the page.
+  const pendingScrollRestoreRef = useRef<{ height: number; top: number } | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder|null>(null);
   const audioChunksRef   = useRef<Blob[]>([]);
   const recordingTimerRef = useRef<ReturnType<typeof setInterval>|null>(null);
@@ -497,8 +569,17 @@ const Chat = () => {
     localVideoRef, remoteVideoRef, screenShareRef,
     networkQuality: callNetworkQuality, participantCount, error: callError,
     callDuration,
-  } = useDailyCall();
+  } = useCall();
   const [isStartingCall, setIsStartingCall] = useState(false);
+  // BUG FIX (call latency): the call screen now appears the instant the
+  // button is tapped (isStartingCall), before the network setup that used
+  // to gate it has even started — see the render gate below. That means
+  // the hang-up button is now reachable *during* that setup, which wasn't
+  // possible before. This flag lets a cancel during that window stop
+  // startCall()'s in-flight async work from finishing the job (joining a
+  // call the person already tried to back out of) instead of just
+  // resetting local UI state and letting it join anyway a moment later.
+  const callCancelledRef = useRef(false);
   const [currentCallId, setCurrentCallId]   = useState<string|null>(null);
 
   // FIX AUDIT #15: re-fetch messages when network is restored or app resumes from background
@@ -586,6 +667,8 @@ const Chat = () => {
     // conversation appears the moment key exchange completes.
     if (!e2eReady) return;
     markedReadRef.current = new Set();
+    didInitialScrollRef.current = false; // new conversation — next load jumps instantly, no smooth animation
+    pendingScrollRestoreRef.current = null;
     fetchMessages();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, partnerId, e2eReady]);
@@ -595,6 +678,15 @@ const Chat = () => {
     if (!hasMoreMessages || loadingMore || messages.length===0) return;
     isLoadingMoreRef.current = true;
     setLoadingMore(true);
+    // Snapshot scroll position so the layout effect below can keep the
+    // person's current reading position fixed once older messages are
+    // prepended above it (see pendingScrollRestoreRef).
+    if (messagesContainerRef.current) {
+      pendingScrollRestoreRef.current = {
+        height: messagesContainerRef.current.scrollHeight,
+        top: messagesContainerRef.current.scrollTop,
+      };
+    }
     // FIX BUG-05: wrap in try/finally so isLoadingMoreRef is always reset even when
     // fetchMessages returns early due to a network/DB error. Previously a fetch error
     // left isLoadingMoreRef=true permanently, which blocked the auto-scroll effect
@@ -728,22 +820,57 @@ const Chat = () => {
     return () => { supabase.removeChannel(ch); };
   }, [user, decrypt]);
 
-  // FIX: auto-scroll on new messages appended (not when loading older ones).
-  // BUG FIX: this used to depend only on `messages`, but the rendered
-  // timeline also includes callHistory and importedMessages (WhatsApp
-  // import) — so a finished call or a batch of imported chat never
-  // triggered the scroll. Now watches all three. A short follow-up scroll
-  // catches late layout shifts (a big WhatsApp import landing at once, or
-  // images still loading) that can leave a long chat short of the bottom.
-  useEffect(() => {
+  // BUG FIX ("scroll loading" — chat visibly scrolls from top to bottom
+  // BUG FIX ("scroll loading" — chat visibly scrolls from top to bottom
+  // every time it loads): this used to always use `behavior: "smooth"`,
+  // including the very first paint of a freshly-opened conversation — so
+  // the whole message list visibly flew past on every cold start. Now the
+  // very first jump-to-bottom for a conversation (tracked by
+  // didInitialScrollRef, reset whenever partnerId changes) is instant and
+  // runs in a layout effect — synchronously after the DOM updates but
+  // before the browser paints, so the first frame the person actually
+  // sees already has the last message in view. Only genuinely new
+  // messages arriving *after* that get the nice smooth slide-in. Also
+  // watches callHistory/importedMessages so a finished call or a batch of
+  // WhatsApp-imported chat still lands at the bottom.
+  //
+  // "Load older messages" restore lives in this same effect rather than a
+  // separate one watching `messages`: both fire off the same
+  // messages-changed render, and `isLoadingMoreRef` alone isn't a safe way
+  // to tell them apart — loadMoreMessages's `finally` block can reset that
+  // ref synchronously before React ever commits the state update it's
+  // guarding, since nothing awaits between them. Checking
+  // `pendingScrollRestoreRef` instead is deterministic: it's only ever
+  // non-null while an older-messages fetch is genuinely in flight, so
+  // there's no window where both this effect's "jump to bottom" and the
+  // position restore could both fire for the same render and fight.
+  useLayoutEffect(() => {
+    const container = messagesContainerRef.current;
+    const pendingRestore = pendingScrollRestoreRef.current;
+    if (pendingRestore && container) {
+      pendingScrollRestoreRef.current = null;
+      container.scrollTop = pendingRestore.top + (container.scrollHeight - pendingRestore.height);
+      return;
+    }
     if (isLoadingMoreRef.current) return;
-    const raf = requestAnimationFrame(() => {
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    });
+    const el = messagesEndRef.current;
+    if (!el) return;
+    const isColdStart = !didInitialScrollRef.current;
+    if (isColdStart) {
+      if (messages.length===0 && callHistory.length===0 && importedMessages.length===0) return;
+      didInitialScrollRef.current = true;
+    }
+    el.scrollIntoView({ behavior: isColdStart ? "auto" : "smooth" });
+    // A short follow-up catches late layout shifts (a big WhatsApp import
+    // landing at once, or images still loading) that can leave a long
+    // chat short of the bottom.
     const t = setTimeout(() => {
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      // Don't fight a load-older-messages restore that may have started
+      // since this timeout was scheduled.
+      if (pendingScrollRestoreRef.current) return;
+      messagesEndRef.current?.scrollIntoView({ behavior: isColdStart ? "auto" : "smooth" });
     }, 350);
-    return () => { cancelAnimationFrame(raf); clearTimeout(t); };
+    return () => clearTimeout(t);
   }, [messages.length, callHistory.length, importedMessages.length]);
 
   // ─── Scheduled message ────────────────────────────────────────────────────
@@ -829,21 +956,41 @@ const Chat = () => {
     run();
   }, [messages,user,partnerId,disappearMs]);
 
-  // Fix #Bug12: removed client-side setInterval that deleted expired messages from the DB.
-  // The old approach caused a race: both partners independently ran DELETE on the same rows
-  // every 5 s, causing duplicate deletes and Supabase constraint errors.
-  // The UI still filters them out locally (messages with disappear_at <= now are hidden).
-  // Actual DB deletion is handled by the Supabase pg_cron job / DB trigger on disappear_at
-  // (see supabase/migrations — the trigger fires server-side, once, with no race).
+  // BUG FIX / POLISH (premium disappearing-message behavior): this used to
+  // batch-check every 5s and mass-filter whatever had expired, so messages
+  // could sit up to 5s past their real expiry and several could vanish in
+  // one visible clump. Each disappearing message now gets its own
+  // setTimeout fired at the *exact* instant it expires, so it disappears
+  // precisely on time and plays its own individual exit animation instead
+  // of several popping at once. DB deletion still happens server-side via
+  // the pg_cron sweep (see delete_expired_messages) — this only ever
+  // touches local UI state.
+  const disappearTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   useEffect(() => {
-    const id = setInterval(() => {
-      const now = new Date();
-      // Only update local state — never touch the DB from the client for expiry
-      setMessages(prev =>
-        prev.filter(m => !m.disappear_at || m.disappear_at === "pending" || new Date(m.disappear_at) > now)
-      );
-    }, 5000);
-    return () => clearInterval(id);
+    const scheduled = disappearTimersRef.current;
+    const stillPresent = new Set<string>();
+    for (const m of messages) {
+      if (!m.disappear_at || m.disappear_at === "pending") continue;
+      stillPresent.add(m.id);
+      if (scheduled.has(m.id)) continue; // expiry time never changes once resolved — don't reschedule
+      const delay = new Date(m.disappear_at).getTime() - Date.now();
+      const remove = () => {
+        scheduled.delete(m.id);
+        setMessages(prev => prev.filter(x => x.id !== m.id));
+      };
+      if (delay <= 0) { remove(); continue; }
+      scheduled.set(m.id, setTimeout(remove, delay));
+    }
+    // A message could disappear from `messages` for a reason other than
+    // expiry (manual delete, chat switch) — clear its timer so it doesn't
+    // fire a no-op removal later.
+    for (const [id, timer] of scheduled) {
+      if (!stillPresent.has(id)) { clearTimeout(timer); scheduled.delete(id); }
+    }
+  }, [messages]);
+
+  useEffect(() => () => {
+    for (const timer of disappearTimersRef.current.values()) clearTimeout(timer);
   }, []);
 
   // ─── Typing presence ──────────────────────────────────────────────────────
@@ -1113,6 +1260,17 @@ const Chat = () => {
     // was racing two joinCall() calls and causing Daily's "Duplicate
     // DailyIframe instances are not allowed" error.
     if (isStartingCall) return;
+    // The call session is shared app-wide now (see CallContext), so a call
+    // started from the Calls page stays alive if the person navigates back
+    // to a chat — check for that too, not just this page's own
+    // isStartingCall flag, otherwise tapping the call button here while
+    // already on a call elsewhere would silently waste a room-creation
+    // request that joinCall() then has to discard via its own re-entrancy
+    // guard.
+    if (callState === "joining" || callState === "joined") {
+      toast({ title: "Already on a call", description: "End the current call before starting a new one." });
+      return;
+    }
 
     // FIX AUDIT #6: rate-limit room creation (max 2 per minute)
     if (!callRoomLimiter.allow()) {
@@ -1122,24 +1280,43 @@ const Chat = () => {
     }
 
     setIsStartingCall(true);
+    callCancelledRef.current = false;
     try {
       // Mic-only probe — Daily.co requests camera itself when joining,
       // and probing video here can race PeekGuard / cameraBus consumers.
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
       stream.getTracks().forEach(t=>t.stop());
       playCallSound();
-      const data = await invokeEdgeFunction<{ name: string; url: string }>("daily-call",
-        { body:{ action:"create-room", roomName:`duo-${user.id.slice(0,8)}-${Date.now()}` } });
-      const tokenData = await invokeEdgeFunction<{ token: string }>("daily-call",
-        { body:{ action:"get-token", roomName:data.name } });
-      const { data:callRecord } = await supabase.from("call_history").insert({
+      // BUG FIX (call latency): "create-and-token" does both Daily API
+      // calls server-side in one edge-function invocation instead of two
+      // fully sequential client round trips (create-room, then only after
+      // that resolves, get-token) — see the edge function for details.
+      const data = await invokeEdgeFunction<{ name: string; url: string; token: string }>("daily-call",
+        { body:{ action:"create-and-token", roomName:`duo-${user.id.slice(0,8)}-${Date.now()}` } });
+
+      if (callCancelledRef.current) {
+        // Cancelled while the network setup above was in flight — don't
+        // join a call the person already backed out of. Best-effort clean
+        // up the room we just created rather than leaving it orphaned.
+        invokeEdgeFunction("daily-call", { body:{ action:"delete-room", roomName:data.name } }).catch(() => {});
+        setIsStartingCall(false);
+        return;
+      }
+      // BUG FIX (call latency): kick off the call_history insert without
+      // awaiting it — nothing about actually joining the Daily room
+      // depends on this row existing yet, only endCall() (much later)
+      // does — and only await the result after joinCall(), so its round
+      // trip overlaps with the (much longer) WebRTC join instead of
+      // sitting in front of it on the critical path.
+      const insertPromise = supabase.from("call_history").insert({
         caller_id:user.id, receiver_id:partnerId, call_type:mode,
         call_direction:"outgoing", status:"in_progress",
         room_name:data.url, started_at:new Date().toISOString(),
       } as any).select().single();
-      if (callRecord) setCurrentCallId((callRecord as any).id);
       // CALL-02 FIX: pass videoOff=true for voice calls so camera never opens
-      await joinCall(data.url, tokenData.token, mode === "voice");
+      await joinCall(data.url, data.token, mode === "voice");
+      const { data:callRecord } = await insertPromise;
+      if (callRecord) setCurrentCallId((callRecord as any).id);
       toast({ title:mode==="video"?"Video call started 📹":"Voice call started 📞" });
     } catch (err: unknown) {
       toast({ title:"Call failed", description: extractErrorMessage(err), variant:"destructive" });
@@ -1149,6 +1326,13 @@ const Chat = () => {
 
   const handleAcceptIncoming = useCallback(async (roomUrl: string, callType: string) => {
     if (isStartingCall) return; // CALL-01 FIX: guard against double-accept
+    // Same cross-page guard as startCall — the call session is shared
+    // app-wide now, so this also protects against accepting an incoming
+    // call while already on another one.
+    if (callState === "joining" || callState === "joined") {
+      toast({ title: "Already on a call", description: "End the current call before accepting a new one." });
+      return;
+    }
     setIsStartingCall(true);
     try {
       const tokenData = await invokeEdgeFunction<{ token: string }>("daily-call",
@@ -1158,7 +1342,7 @@ const Chat = () => {
       toast({ title:"Call connected 📞" });
     } catch (err: unknown) { toast({ title:"Couldn't join call", description: extractErrorMessage(err), variant:"destructive" }); }
     setIsStartingCall(false);
-  }, [joinCall, isStartingCall, toast]);
+  }, [joinCall, isStartingCall, callState, toast]);
 
   const handleDeclineIncoming = useCallback((_id: string) => { toast({ title:"Call declined" }); }, [toast]);
 
@@ -1170,6 +1354,19 @@ const Chat = () => {
       setCurrentCallId(null);
     }
     leaveCall();
+  };
+
+  // BUG FIX (call latency): cancel a call that's still in the pre-join
+  // network setup phase (create-and-token / call_history insert), reachable
+  // now that the call screen — and its hang-up button — shows up the
+  // instant the call button is tapped instead of only once actually
+  // joined. Sets callCancelledRef so startCall()'s in-flight work bails
+  // out instead of joining a call the person already backed out of.
+  const cancelStartingCall = () => {
+    callCancelledRef.current = true;
+    leaveCall(); // safe no-op if joinCall() hasn't created a call object yet
+    setIsStartingCall(false);
+    toast({ title:"Call cancelled" });
   };
 
   // ─── Search ───────────────────────────────────────────────────────────────
@@ -1254,7 +1451,15 @@ const Chat = () => {
     );
   }
 
-  if (callState==="joined"||callState==="joining") {
+  // BUG FIX (call latency): this used to gate on callState alone, which
+  // only becomes "joining" deep inside joinCall() — itself called only
+  // after the create-and-token network call and the call_history insert
+  // both complete. The button just showed a "Starting..." label for that
+  // entire stretch with no other feedback. Including isStartingCall here
+  // means this whole screen (with its own "Connecting..." state below)
+  // appears the instant the button is tapped, and the actual network
+  // setup happens behind it instead of in front of it.
+  if (isStartingCall || callState==="joined" || callState==="joining") {
     return (
       <motion.div initial={{ opacity:0 }} animate={{ opacity:1 }}
         className="fixed inset-0 z-[100] flex flex-col h-[100dvh] bg-[hsl(var(--foreground))] relative">
@@ -1274,7 +1479,7 @@ const Chat = () => {
             </div>
           </div>
         )}
-        {callState==="joining" && (
+        {(isStartingCall || callState==="joining") && callState!=="joined" && (
           <div className="absolute inset-0 flex items-center justify-center bg-[hsl(var(--foreground))]">
             <p className="text-lg font-medium animate-pulse text-background/60">Connecting...</p>
           </div>
@@ -1321,7 +1526,7 @@ const Chat = () => {
               className={`h-12 w-12 rounded-full flex items-center justify-center transition-colors ${isScreenSharing?"bg-primary":"bg-background/15 backdrop-blur-md"}`}>
               {isScreenSharing?<MonitorOff className="h-5 w-5 text-background" aria-hidden="true" />:<Monitor className="h-5 w-5 text-background" aria-hidden="true" />}
             </button>
-            <button onClick={() => { hapticMedium(); endCall(); }}
+            <button onClick={() => { hapticMedium(); callState==="idle" ? cancelStartingCall() : endCall(); }}
               aria-label="End call"
               className="h-14 w-14 rounded-full bg-destructive flex items-center justify-center shadow-lg">
               <PhoneOff className="h-6 w-6 text-background" aria-hidden="true" />
@@ -1478,7 +1683,7 @@ const Chat = () => {
         {disappearMode && (
           <motion.div initial={{ height:0,opacity:0 }} animate={{ height:"auto",opacity:1 }} exit={{ height:0,opacity:0 }} className="overflow-hidden">
             <div className="px-4 py-1.5 bg-primary/5 flex items-center justify-center gap-1.5">
-              <Timer className="h-3 w-3 text-primary" />
+              <Timer className="h-3 w-3 text-primary animate-pulse-soft" />
               <span className="text-[10px] text-primary font-medium">
                 Disappear after {DISAPPEAR_OPTIONS.find(o=>o.value===disappearMs)?.label||"30 seconds"} • Tap timer to change
               </span>

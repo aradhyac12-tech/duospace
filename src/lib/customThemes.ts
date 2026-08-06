@@ -50,13 +50,26 @@ const ALL_TOKEN_VARS = [
   "--border", "--input", "--ring", "--destructive", "--destructive-foreground",
 ];
 
-export const applyCustomTheme = (t: CustomTheme) => {
-  const mode: ColorMode = t.amoled ? "dark" : ((storage.get("duo-color-mode") as ColorMode) || "dark");
+export const applyCustomTheme = (t: CustomTheme, mode?: ColorMode) => {
+  // BUG FIX ("themes not working properly according to the time and the
+  // dark/light theme"): this used to always read the raw "duo-color-mode"
+  // localStorage key directly, which only ever gets written by an
+  // *explicit* manual light/dark toggle (see ThemeContext's setColorMode).
+  // It was never updated by "auto" (OS preference), "schedule" (time
+  // window), or "dynamic" (continuous day/night blend) — so a custom theme
+  // was permanently stuck on whatever mode was last manually set (or
+  // "dark" if that key had never been written), completely ignoring time-
+  // of-day and system preference. ThemeContext now passes its already-
+  // correctly-resolved `colorMode` React state in explicitly; the
+  // storage read remains only as a fallback for any caller that doesn't
+  // have that state on hand.
+  const resolvedMode: ColorMode =
+    mode ?? (t.amoled ? "dark" : ((storage.get("duo-color-mode") as ColorMode) || "dark"));
   const identity = {
     primary: parseHslString(t.primary),
     accent: parseHslString(t.accent),
   };
-  const tokens = deriveTokens(identity, mode);
+  const tokens = deriveTokens(identity, t.amoled ? "dark" : resolvedMode);
 
   // Explicit per-theme overrides (legacy presets that hardcoded a specific
   // background/foreground rather than deriving one) still win if present.
@@ -100,11 +113,11 @@ export const clearCustomThemeOverride = () => {
   });
 };
 
-export const restoreActiveCustomTheme = () => {
+export const restoreActiveCustomTheme = (mode?: ColorMode) => {
   const id = getActiveCustomThemeId();
   if (!id) return;
   const t = listCustomThemes().find(x => x.id === id);
-  if (t) applyCustomTheme(t);
+  if (t) applyCustomTheme(t, mode);
 };
 
 // ── Color conversion helpers ────────────────────────────────────────────────

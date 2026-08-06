@@ -25,7 +25,7 @@ const PeekGuard = () => {
   const peekConfig = useMemo(() => ({
     matchThreshold:        appSettings.peekMatchThreshold        ?? 0.7,
     minFaceArea:           appSettings.peekMinFaceArea           ?? 0.015,
-    consistencyFrames:     appSettings.peekConsistencyFrames     ?? 2,
+    consistencyFrames:     appSettings.peekConsistencyFrames     ?? 3,
     lockDelay:             appSettings.peekLockDelay             ?? 150,
     checkInterval:         appSettings.peekCheckInterval         ?? 300,
     alertOnStranger:       appSettings.peekAlertOnStranger       ?? true,

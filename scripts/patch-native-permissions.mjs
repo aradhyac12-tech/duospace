@@ -335,15 +335,108 @@ const MAIN_ACTIVITY_MARKER = "DUOSPACE PUSH ADDITIONS";
 
 const MAIN_ACTIVITY_KOTLIN_ADDITIONS = `
     // === ${MAIN_ACTIVITY_MARKER} (added by scripts/patch-native-permissions.mjs) ===
+
+    companion object {
+        // Generated once when this class is first loaded into a process (a
+        // Kotlin \`companion object\` property initializer runs exactly once
+        // per classloader, i.e. once per process — not once per Activity
+        // instance). Two logcat lines with a DIFFERENT token mean the OS
+        // killed the whole process in between and this is a fresh cold
+        // start; the SAME token across onPause (backgrounding for the OAuth
+        // browser) and onNewIntent/onCreate (the callback returning) is the
+        // definitive proof that the process survived the round-trip. This is
+        // a stronger signal than savedInstanceState alone, which is also
+        // null on a plain first launch and can't by itself distinguish
+        // "fresh process" from "same process, first Activity creation".
+        private val PROCESS_TOKEN = "p_" + System.currentTimeMillis().toString(36) + "_" + (1000..9999).random()
+    }
+
+    private fun lifecycleLog(event: String) {
+        android.util.Log.i(
+            "DuoSpaceLifecycle",
+            "$event processToken=$PROCESS_TOKEN instance=\${System.identityHashCode(this)} isFinishing=$isFinishing isChangingConfigurations=$isChangingConfigurations",
+        )
+    }
+
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
+        // Logged BEFORE super.onCreate() so the "was this process already
+        // alive" question is answered from the very first line of Activity
+        // startup, before Capacitor's own bridge/plugin init runs.
+        android.util.Log.i(
+            "DuoSpaceLifecycle",
+            "onCreate processToken=$PROCESS_TOKEN instance=\${System.identityHashCode(this)} " +
+                "savedInstanceState=\${if (savedInstanceState != null) "present (config-change restore, same process)" else "null (first creation in this process)"} " +
+                "intentAction=\${intent?.action} intentData=\${intent?.data}",
+        )
         super.onCreate(savedInstanceState)
         com.duospace.app.NotificationChannels.createAll(this)
         logIfOAuthCallback(intent, "onCreate")
         handleDuospaceCallIntent(intent)
     }
 
+    override fun onStart() {
+        super.onStart()
+        lifecycleLog("onStart")
+    }
+
+    override fun onResume() {
+        super.onResume()
+        lifecycleLog("onResume")
+    }
+
+    override fun onPause() {
+        // Fires right before the system browser takes the foreground for
+        // Google Sign-In — the PROCESS_TOKEN logged here is the baseline to
+        // compare against whatever's logged when the duospace://auth
+        // callback comes back.
+        lifecycleLog("onPause (backgrounding — e.g. system browser opening for OAuth)")
+        super.onPause()
+    }
+
+    override fun onStop() {
+        lifecycleLog("onStop")
+        super.onStop()
+    }
+
+    override fun onDestroy() {
+        // If this fires during the OAuth round-trip with isFinishing=false
+        // and isChangingConfigurations=false, the OS reclaimed this Activity
+        // under memory pressure while the browser was in the foreground —
+        // the actual native-level cause of "app terminates/restarts after
+        // Google Sign-In", as distinct from a launchMode/intent-filter
+        // misconfiguration (which would show up as onCreate instead of
+        // onNewIntent in logIfOAuthCallback below, not as an onDestroy here).
+        android.util.Log.w(
+            "DuoSpaceLifecycle",
+            "onDestroy processToken=$PROCESS_TOKEN instance=\${System.identityHashCode(this)} " +
+                "isFinishing=$isFinishing isChangingConfigurations=$isChangingConfigurations" +
+                if (!isFinishing && !isChangingConfigurations)
+                    " — UNEXPECTED: Activity destroyed by the system, not by user/config-change. If this happened mid-OAuth, the process was reclaimed for memory."
+                else "",
+        )
+        super.onDestroy()
+    }
+
     override fun onNewIntent(intent: android.content.Intent?) {
+        android.util.Log.i(
+            "DuoSpaceLifecycle",
+            "onNewIntent RECEIVED processToken=$PROCESS_TOKEN instance=\${System.identityHashCode(this)} " +
+                "action=\${intent?.action} data=\${intent?.data} flags=\${intent?.flags?.let { java.lang.Integer.toHexString(it) }}",
+        )
         super.onNewIntent(intent)
+        // super.onNewIntent() is BridgeActivity's own implementation, which
+        // calls Bridge.onNewIntent(intent) internally — THAT is what fires
+        // the JS 'appUrlOpen' event Auth.tsx is listening for. By the time
+        // this next line runs, that JS event has already been dispatched
+        // (or, if nothing logs next in [DuoSpaceOAuth][auth.deeplink], the
+        // JS-side listener from Auth.tsx's useEffect was never registered —
+        // check whether Auth.tsx was even mounted at the time this fired).
+        android.util.Log.i(
+            "DuoSpaceOAuth",
+            "onNewIntent -> super.onNewIntent() returned; Capacitor Bridge.onNewIntent() has run. " +
+                "If this intent carries duospace://auth data, JS 'appUrlOpen' has now fired — " +
+                "next expected line is [DuoSpaceOAuth][auth.deeplink] from Auth.tsx.",
+        )
         logIfOAuthCallback(intent, "onNewIntent")
         handleDuospaceCallIntent(intent)
     }
@@ -368,7 +461,9 @@ const MAIN_ACTIVITY_KOTLIN_ADDITIONS = `
         if (data.scheme == "duospace" && data.host == "auth") {
             val level = if (via == "onNewIntent") android.util.Log.INFO else android.util.Log.WARN
             val pathPart = data.path.orEmpty()
-            var msg = "duospace://auth callback delivered via $via (path=$pathPart)"
+            val hasCode = data.getQueryParameter("code") != null
+            val hasError = data.getQueryParameter("error") != null || data.getQueryParameter("error_description") != null
+            var msg = "duospace://auth callback delivered via $via (path=$pathPart, hasCode=$hasCode, hasError=$hasError, processToken=$PROCESS_TOKEN)"
             if (via == "onCreate") {
                 msg += " — ACTIVITY WAS RECREATED, expected onNewIntent; check launchMode=singleTask"
             }

@@ -40,6 +40,21 @@ export const newTraceId = (prefix = "t") =>
 const RING_BUFFER_SIZE = 50;
 const recentEvents: ErrorEvent[] = [];
 
+// auth.* contexts (OAuth initiation, native deep-link handling, code
+// exchange) always echo to console, even in a signed release build — not
+// just import.meta.env.DEV. This is the actual root cause of "there's
+// nothing useful in Logcat": every logInfo/logWarn/logError call from the
+// OAuth flow was being silently swallowed on-device the moment this was
+// built in release mode, since only sendToBackend() (network-dependent,
+// not visible locally) ran outside of dev. Everything else keeps the
+// original DEV-only gating — this widening is scoped narrowly to the one
+// path that needs on-device Logcat visibility to debug the native Activity
+// lifecycle, not a blanket reversal of the earlier privacy-motivated fix.
+const ALWAYS_ECHO_CONTEXTS = new Set(["auth.deeplink", "auth.callback", "auth.oauth"]);
+function shouldEcho(context: string): boolean {
+  return import.meta.env.DEV || ALWAYS_ECHO_CONTEXTS.has(context);
+}
+
 // Rate limiter: drop duplicate (context+message) within 2s window.
 const lastSeen = new Map<string, number>();
 const RATE_WINDOW_MS = 2000;
@@ -108,7 +123,10 @@ export function logWarn(context: string, message: string, extra?: unknown, trace
     extra: formatExtra(extra),
   };
   record(event);
-  if (import.meta.env.DEV) console.warn(`[${context}${traceId ? `:${traceId}` : ""}] ${message}`, extra ?? "");
+  if (shouldEcho(context)) {
+    const tag = ALWAYS_ECHO_CONTEXTS.has(context) ? "[DuoSpaceOAuth]" : "";
+    console.warn(`${tag}[${context}${traceId ? `:${traceId}` : ""}] ${message}`, extra ?? "");
+  }
 }
 
 /** Log an error and send it to the telemetry backend. */
@@ -127,6 +145,7 @@ export function logError(context: string, message: string, err?: unknown, traceI
   // error detail (traceIds, provider errors, stack fragments) into the
   // devtools console for any user to see.
   if (import.meta.env.DEV) console.error(`[${context}${traceId ? `:${traceId}` : ""}] ${message}`, err ?? "");
+  else if (ALWAYS_ECHO_CONTEXTS.has(context)) console.error(`[DuoSpaceOAuth][${context}${traceId ? `:${traceId}` : ""}] ${message}`, err ?? "");
   sendToBackend(event).catch(() => { /* telemetry must never throw */ });
 }
 
@@ -140,5 +159,8 @@ export function logInfo(context: string, message: string, extra?: unknown, trace
     extra: formatExtra(extra),
   };
   record(event);
-  if (import.meta.env.DEV) console.info(`[${context}${traceId ? `:${traceId}` : ""}] ${message}`, extra ?? "");
+  if (shouldEcho(context)) {
+    const tag = ALWAYS_ECHO_CONTEXTS.has(context) ? "[DuoSpaceOAuth]" : "";
+    console.info(`${tag}[${context}${traceId ? `:${traceId}` : ""}] ${message}`, extra ?? "");
+  }
 }

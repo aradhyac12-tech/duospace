@@ -25,14 +25,24 @@ export type ThemeColor =
   | "slate"
   | "blush"
   | "cocoa"
-  | "lagoon";
+  | "lagoon"
+  | "wine"
+  | "sunset"
+  | "emerald"
+  | "sapphire"
+  | "indigo"
+  | "gold"
+  | "cherry"
+  | "olive"
+  | "steel"
+  | "sand";
 
 // Backward-compat: old preset ids (before the preset system was rebuilt)
 // map onto the closest new identity so a saved `duo-theme` value from an
 // older session never crashes or silently falls through to a default.
 const LEGACY_THEME_ALIASES: Record<string, ThemeColor> = {
   "soft-neutral": "minimal-light",
-  "wine-red": "rose",
+  "wine-red": "wine",
   "cherry-blossom": "rose",
   "golden-hour": "amber",
   terracotta: "amber",
@@ -59,7 +69,7 @@ export interface AppSettings {
   peekCheckInterval: number;
   // New owner-recognition pipeline knobs
   peekMatchThreshold: number;        // 0..1 cosine similarity (default 0.7)
-  peekConsistencyFrames: number;     // 1..10 (default 2)
+  peekConsistencyFrames: number;     // 1..10 (default 3 — see usePeekDetection.ts DEFAULTS)
   peekLockDelay: number;             // ms (default 150 — see usePeekDetection.ts)
   peekMinFaceArea: number;           // 0..0.2 normalized area (default 0.015)
   peekAlertOnStranger: boolean;      // default true
@@ -110,7 +120,7 @@ const defaultSettings: AppSettings = {
   peekDetectionDelay: 1500,
   peekCheckInterval: 300,
   peekMatchThreshold: 0.7,
-  peekConsistencyFrames: 2,
+  peekConsistencyFrames: 3,
   peekLockDelay: 150,
   peekMinFaceArea: 0.015,
   peekAlertOnStranger: true,
@@ -172,6 +182,17 @@ export const THEME_IDENTITIES: Record<ThemeColor, ThemeIdentity> = {
   blush:          { primary: { h: 330, s: 50, l: 72 }, accent: { h: 320, s: 42, l: 68 } },
   cocoa:          { primary: { h: 25,  s: 30, l: 45 }, accent: { h: 20,  s: 25, l: 42 } },
   lagoon:         { primary: { h: 185, s: 55, l: 48 }, accent: { h: 175, s: 45, l: 50 } },
+  // ── Added for a wider preset range ──────────────────────────────────────
+  wine:           { primary: { h: 350, s: 58, l: 34 }, accent: { h: 355, s: 45, l: 40 } },
+  sunset:         { primary: { h: 18,  s: 82, l: 58 }, accent: { h: 340, s: 65, l: 62 } },
+  emerald:        { primary: { h: 152, s: 55, l: 38 }, accent: { h: 165, s: 45, l: 42 } },
+  sapphire:       { primary: { h: 215, s: 65, l: 45 }, accent: { h: 225, s: 55, l: 50 } },
+  indigo:         { primary: { h: 245, s: 55, l: 56 }, accent: { h: 255, s: 45, l: 60 } },
+  gold:           { primary: { h: 45,  s: 75, l: 50 }, accent: { h: 38,  s: 60, l: 55 } },
+  cherry:         { primary: { h: 355, s: 68, l: 52 }, accent: { h: 5,   s: 55, l: 58 } },
+  olive:          { primary: { h: 75,  s: 32, l: 38 }, accent: { h: 60,  s: 25, l: 42 } },
+  steel:          { primary: { h: 205, s: 20, l: 46 }, accent: { h: 200, s: 15, l: 50 } },
+  sand:           { primary: { h: 35,  s: 38, l: 65 }, accent: { h: 28,  s: 32, l: 60 } },
 };
 
 // Each preset's INTENDED default mode (its "home" appearance) — the mode
@@ -183,6 +204,9 @@ const THEME_DEFAULT_MODE: Record<ThemeColor, ColorMode> = {
   "minimal-light": "light", "minimal-dark": "dark", monochrome: "dark",
   lavender: "light", mint: "light", plum: "dark", coral: "light",
   slate: "dark", blush: "light", cocoa: "dark", lagoon: "dark",
+  wine: "dark", sunset: "light", emerald: "dark", sapphire: "dark",
+  indigo: "dark", gold: "light", cherry: "light", olive: "dark",
+  steel: "dark", sand: "light",
 };
 
 const swatchPreview = (id: ThemeColor): string => {
@@ -220,6 +244,16 @@ export const THEMES: Array<{
   { id: "blush",           name: "Blush",         emoji: "🌷", preview: swatchPreview("blush"),           accent: swatchAccent("blush"),           dark: THEME_DEFAULT_MODE.blush === "dark" },
   { id: "cocoa",           name: "Cocoa",         emoji: "🍫", preview: swatchPreview("cocoa"),           accent: swatchAccent("cocoa"),           dark: THEME_DEFAULT_MODE.cocoa === "dark" },
   { id: "lagoon",          name: "Lagoon",        emoji: "🌴", preview: swatchPreview("lagoon"),          accent: swatchAccent("lagoon"),          dark: THEME_DEFAULT_MODE.lagoon === "dark" },
+  { id: "wine",            name: "Wine Red",      emoji: "🍷", preview: swatchPreview("wine"),            accent: swatchAccent("wine"),            dark: THEME_DEFAULT_MODE.wine === "dark" },
+  { id: "sunset",          name: "Sunset",        emoji: "🌇", preview: swatchPreview("sunset"),          accent: swatchAccent("sunset"),          dark: THEME_DEFAULT_MODE.sunset === "dark" },
+  { id: "emerald",         name: "Emerald",       emoji: "💚", preview: swatchPreview("emerald"),         accent: swatchAccent("emerald"),         dark: THEME_DEFAULT_MODE.emerald === "dark" },
+  { id: "sapphire",        name: "Sapphire",      emoji: "💎", preview: swatchPreview("sapphire"),        accent: swatchAccent("sapphire"),        dark: THEME_DEFAULT_MODE.sapphire === "dark" },
+  { id: "indigo",          name: "Indigo",        emoji: "🔮", preview: swatchPreview("indigo"),          accent: swatchAccent("indigo"),          dark: THEME_DEFAULT_MODE.indigo === "dark" },
+  { id: "gold",            name: "Gold",          emoji: "🌟", preview: swatchPreview("gold"),            accent: swatchAccent("gold"),            dark: THEME_DEFAULT_MODE.gold === "dark" },
+  { id: "cherry",          name: "Cherry",        emoji: "🍒", preview: swatchPreview("cherry"),          accent: swatchAccent("cherry"),          dark: THEME_DEFAULT_MODE.cherry === "dark" },
+  { id: "olive",           name: "Olive",         emoji: "🫒", preview: swatchPreview("olive"),           accent: swatchAccent("olive"),           dark: THEME_DEFAULT_MODE.olive === "dark" },
+  { id: "steel",           name: "Steel",         emoji: "🔩", preview: swatchPreview("steel"),           accent: swatchAccent("steel"),           dark: THEME_DEFAULT_MODE.steel === "dark" },
+  { id: "sand",            name: "Sand",          emoji: "🏖️", preview: swatchPreview("sand"),            accent: swatchAccent("sand"),            dark: THEME_DEFAULT_MODE.sand === "dark" },
 ];
 
 // ─── IndexedDB icon store ────────────────────────────────────────────────────
@@ -326,8 +360,11 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
       }
       document.documentElement.classList.toggle("dark", colorMode === "dark");
       // Lazy-import to avoid a circular dep at module load.
+      // Pass the already-resolved colorMode through explicitly — see the
+      // BUG FIX comment in customThemes.ts's applyCustomTheme for why this
+      // matters for schedule/auto/dynamic modes.
       import("@/lib/customThemes").then(({ restoreActiveCustomTheme }) => {
-        restoreActiveCustomTheme();
+        restoreActiveCustomTheme(colorMode);
       });
     };
     // View Transitions API: smooth crossfade between the old and new palette
@@ -369,6 +406,19 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
   const setTheme = (t: ThemeColor) => {
     setThemeState(t);
     storage.set("duo-theme", t);
+    // BUG FIX ("themes not working properly"): the apply-effect below always
+    // calls restoreActiveCustomTheme() after deriving a preset's tokens, so
+    // it persists across reloads. But if the person had ever applied a
+    // custom theme (ThemeStudio), that "active custom theme" flag stayed
+    // set in storage forever — nothing ever cleared it. Picking a different
+    // *built-in* preset here would apply its tokens for a frame, then get
+    // immediately overwritten right back to the old custom theme by that
+    // same effect, so switching presets silently appeared to do nothing.
+    // Selecting a built-in preset is an explicit move off any custom
+    // theme, so clear the override here.
+    import("@/lib/customThemes").then(({ getActiveCustomThemeId, clearCustomThemeOverride }) => {
+      if (getActiveCustomThemeId()) clearCustomThemeOverride();
+    });
     import("@/integrations/supabase/client").then(({ supabase }) => {
       supabase.auth.getUser().then(({ data }) => {
         if (data.user)

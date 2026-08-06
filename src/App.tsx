@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate, useParams } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { ThemeProvider, useTheme } from "@/contexts/ThemeContext";
+import { CallProvider } from "@/contexts/CallContext";
 
 import AppLayout from "@/components/AppLayout";
 import AppLockScreen from "@/components/AppLockScreen";
@@ -167,7 +168,7 @@ const ProtectedRoutes = () => {
 
   if (isAppLocked) return <AppLockScreen />;
 
-  return <AppLayout />;
+  return <CallProvider><AppLayout /></CallProvider>;
 };
 
 /** Suspense wrapper that shows the right skeleton per route. */

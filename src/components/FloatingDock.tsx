@@ -2,7 +2,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { MessageCircle, Phone } from "lucide-react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { routePreload } from "@/App";
@@ -28,17 +28,20 @@ const PRIMARY: Tab[] = [
   { path: "/calls", icon: Phone, label: "Calls", badgeKey: "calls" },
 ];
 
-const HIDDEN_PAGES = ["/settings", "/profile"];
+interface FloatingDockProps {
+  /** Lifted up to AppLayout so its reserved bottom padding can animate in
+   *  sync with the dock instead of leaving a static gap when it hides —
+   *  see hooks/useDockVisibility.ts. */
+  isVisible: boolean;
+  isHidden: boolean;
+}
 
-const FloatingDock = () => {
+const FloatingDock = ({ isVisible, isHidden }: FloatingDockProps) => {
   const location = useLocation();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const [isVisible, setIsVisible] = useState(true);
   const [unreadMessages, setUnreadMessages] = useState(0);
   const [missedCalls, setMissedCalls] = useState(0);
-  const lastScrollY = useRef(0);
-  const isHidden = HIDDEN_PAGES.includes(location.pathname);
 
   // ── Realtime badge counts ──────────────────────────────────────────────────
   useEffect(() => {
@@ -71,37 +74,6 @@ const FloatingDock = () => {
         .eq("receiver_id", user.id).eq("status", "missed").then(() => {});
     }
   }, [location.pathname, user]);
-
-  // ── Hide on scroll-down, show on scroll-up ─────────────────────────────────
-  // Chat/Calls/Settings each scroll their own internal overflow-y-auto div,
-  // not the window (the page root is h-[100dvh] overflow-hidden) — so a
-  // window-only scroll listener never fires here. "scroll" events don't
-  // bubble, but capture-phase dispatch still passes through document, so
-  // listening on document with capture:true catches scrolling from whichever
-  // container is actually scrolling on the current screen.
-  useEffect(() => {
-    if (isHidden) return;
-    let ticking = false;
-    const onScroll = (e: Event) => {
-      if (ticking) return;
-      ticking = true;
-      requestAnimationFrame(() => {
-        const target = e.target as HTMLElement | Document | null;
-        const top = !target || target === document
-          ? window.scrollY
-          : (target as HTMLElement).scrollTop ?? 0;
-        const dy = top - lastScrollY.current;
-        if (dy > 8 && top > 60) setIsVisible(false);
-        else if (dy < -8 || top < 20) setIsVisible(true);
-        lastScrollY.current = top;
-        ticking = false;
-      });
-    };
-    document.addEventListener("scroll", onScroll, { passive: true, capture: true });
-    return () => document.removeEventListener("scroll", onScroll, true);
-  }, [isHidden]);
-
-  useEffect(() => { setIsVisible(true); lastScrollY.current = 0; }, [location.pathname]);
 
   if (isHidden) return null;
 

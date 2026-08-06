@@ -6,7 +6,7 @@ import type { AudioRoute } from "duospace-audio-route";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { useDailyCall } from "@/hooks/useDailyCall";
+import { useCall } from "@/contexts/CallContext";
 import { useToast } from "@/hooks/use-toast";
 import LipReadingOverlay from "@/components/LipReadingOverlay";
 import { pauseCameraConsumers, resumeCameraConsumers } from "@/lib/cameraBus";
@@ -177,6 +177,15 @@ const Calls = () => {
   const [callMode, setCallMode] = useState<"video" | "voice">("video");
   const [showLipReading, setShowLipReading] = useState(false);
   const callStartTimeRef = useRef<Date | null>(null);
+  // BUG FIX (call latency): the call screen now appears the instant the
+  // button is tapped (isStartingCall), before the network setup that used
+  // to gate it has even started — see the render gate below. That means
+  // the hang-up button is now reachable *during* that setup, which wasn't
+  // possible before. This flag lets a cancel during that window stop
+  // startCall()'s in-flight async work from finishing the job (joining a
+  // call the person already tried to back out of) instead of just
+  // resetting local UI state and letting it join anyway a moment later.
+  const callCancelledRef = useRef(false);
 
   const {
     joinCall, leaveCall, toggleAudio, toggleVideo, toggleScreenShare,
@@ -185,7 +194,7 @@ const Calls = () => {
     localVideoRef, remoteVideoRef, screenShareRef,
     networkQuality: callNetworkQuality, participantCount, error,
     callDuration,
-  } = useDailyCall();
+  } = useCall();
 
   const [cameras,        setCameras]        = useState<{ deviceId: string; label: string }[]>([]);
   const [showCamPicker,  setShowCamPicker]  = useState(false);
@@ -291,28 +300,57 @@ const Calls = () => {
     // a second tap could race a second joinCall() and trip Daily's
     // "Duplicate DailyIframe instances are not allowed" error.
     if (isStartingCall) return;
+    // The call session is now shared app-wide (see CallContext) so a call
+    // started from the Chat page stays alive if the person navigates here
+    // — check for that too, not just this page's own isStartingCall flag,
+    // otherwise tapping "Call" here while already on a call elsewhere would
+    // silently waste a room-creation request that joinCall() then has to
+    // discard via its own re-entrancy guard.
+    if (callState === "joining" || callState === "joined") {
+      toast({ title: "Already on a call", description: "End the current call before starting a new one." });
+      return;
+    }
 
     // Request permissions first
     const hasPermission = await requestMediaPermission(mode);
     if (!hasPermission) return;
 
     setIsStartingCall(true);
+    callCancelledRef.current = false;
     setCallMode(mode);
     // Hand the camera to the call: stop PeekGuard / MoodDetector / face
     // enrollment streams so Daily.co can claim the device cleanly.
     pauseCameraConsumers("call-start");
     try {
-      const data = await invokeEdgeFunction<{ name: string; url: string }>("daily-call", {
-        body: { action: "create-room", roomName: `duo-${user.id.slice(0, 8)}-${Date.now()}` },
+      // BUG FIX (call latency): this used to be two fully sequential
+      // invokeEdgeFunction round trips ("create-room" then "get-token",
+      // only starting the second after the first fully resolved) before
+      // joinCall() could even begin. "create-and-token" does both Daily
+      // API calls back-to-back on the server, so the client only pays for
+      // one round trip's worth of network + Supabase Functions overhead
+      // instead of two.
+      const data = await invokeEdgeFunction<{ name: string; url: string; token: string }>("daily-call", {
+        body: { action: "create-and-token", roomName: `duo-${user.id.slice(0, 8)}-${Date.now()}` },
       });
 
-      const tokenData = await invokeEdgeFunction<{ token: string }>("daily-call", {
-        body: { action: "get-token", roomName: data.name },
-      });
+      if (callCancelledRef.current) {
+        // Cancelled while the network setup above was in flight — don't
+        // join a call the person already backed out of. Best-effort clean
+        // up the room we just created rather than leaving it orphaned.
+        invokeEdgeFunction("daily-call", { body: { action: "delete-room", roomName: data.name } }).catch(() => {});
+        return;
+      }
 
-      // Save call to history — Fix #4: store full room URL so receiver can join
+      // Save call to history — Fix #4: store full room URL so receiver can join.
+      // BUG FIX (call latency): this DB insert doesn't need to finish
+      // before joinCall() starts — nothing about actually joining the
+      // Daily room depends on the call_history row existing yet, only
+      // endCall() (much later) does. Kicking it off without awaiting and
+      // only awaiting the result *after* joinCall() lets its round trip
+      // overlap with the (much longer) WebRTC join instead of adding to
+      // the critical path in front of it.
       callStartTimeRef.current = new Date();
-      const { data: callRecord } = await supabase.from("call_history").insert({
+      const insertPromise = supabase.from("call_history").insert({
         caller_id: user.id,
         receiver_id: partnerId,
         call_type: mode,
@@ -321,9 +359,11 @@ const Calls = () => {
         room_name: data.url,  // Fix #4: full URL, not just name
         started_at: new Date().toISOString(),
       } as never).select().single();
+
+      await joinCall(data.url, data.token, mode === "voice"); // CALL-02 FIX: videoOff flag
+      const { data: callRecord } = await insertPromise;
       if (callRecord) setCurrentCallId((callRecord as { id: string }).id);
 
-      await joinCall(data.url, tokenData.token, mode === "voice"); // CALL-02 FIX: videoOff flag
       // Load available cameras for picker (includes OTG/dongle cameras)
       const cams = await listCameras();
       setCameras(cams);
@@ -362,6 +402,20 @@ const Calls = () => {
     toast({ title: "Call ended" });
   };
 
+  // BUG FIX (call latency): cancel a call that's still in the pre-join
+  // network setup phase (create-and-token / call_history insert), reachable
+  // now that the call screen — and its hang-up button — shows up the
+  // instant the call button is tapped instead of only once actually
+  // joined. Sets callCancelledRef so startCall()'s in-flight work bails
+  // out instead of joining a call the person already backed out of.
+  const cancelStartingCall = () => {
+    callCancelledRef.current = true;
+    leaveCall(); // safe no-op if joinCall() hasn't created a call object yet
+    setIsStartingCall(false);
+    resumeCameraConsumers("call-cancelled");
+    toast({ title: "Call cancelled" });
+  };
+
   // Safety net: if the call ever leaves an active state without endCall()
   // being invoked (error, peer drop, or programmatic leave), make sure
   // PeekGuard / MoodDetector can reclaim the camera.
@@ -377,7 +431,15 @@ const Calls = () => {
   };
 
   // In-call UI
-  if (callState === "joined" || callState === "joining") {
+  // BUG FIX (call latency): this used to gate on callState alone, which
+  // only becomes "joining" deep inside joinCall() — itself called only
+  // after the create-and-token network call and the call_history insert
+  // both complete. The button just showed a "Starting..." label for that
+  // entire stretch with no other feedback. Including isStartingCall here
+  // means this whole screen (with its own "Connecting..." state below)
+  // appears the instant the button is tapped, and the actual network
+  // setup happens behind it instead of in front of it.
+  if (isStartingCall || callState === "joined" || callState === "joining") {
     return (
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col flex-1 min-h-0 bg-foreground relative">
         <video ref={remoteVideoRef} autoPlay playsInline
@@ -397,7 +459,7 @@ const Calls = () => {
           </div>
         )}
 
-        {callState === "joining" && (
+        {(isStartingCall || callState === "joining") && callState !== "joined" && (
           <div className="absolute inset-0 flex items-center justify-center bg-foreground">
             <p className="text-lg font-serif animate-pulse-soft text-background/80">Connecting...</p>
           </div>
@@ -504,7 +566,7 @@ const Calls = () => {
                 <PictureInPicture2 className="h-5 w-5 text-background" aria-hidden="true" />
               </button>
             )}
-            <button onClick={() => { hapticHeavy(); endCall(); }}
+            <button onClick={() => { hapticHeavy(); callState === "idle" ? cancelStartingCall() : endCall(); }}
               aria-label="End call"
               className="h-16 w-16 rounded-full bg-destructive flex items-center justify-center shadow-lg">
               <PhoneOff className="h-7 w-7 text-background" aria-hidden="true" />

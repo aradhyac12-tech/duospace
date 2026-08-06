@@ -1,6 +1,7 @@
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import { useCallback, useRef } from "react";
 import { useSwipeNav } from "@/hooks/useSwipeNav";
+import { useDockVisibility } from "@/hooks/useDockVisibility";
 import { AnimatePresence, motion } from "framer-motion";
 
 import FloatingDock from "@/components/FloatingDock";
@@ -24,6 +25,7 @@ const AppLayout = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
+  const { isVisible: dockVisible, isHidden: dockHidden } = useDockVisibility();
 
   // Swipe left/right between the main tabs (Chat -> Calls), mirroring the
   // bottom dock order. Direction is tracked so the page transition can slide
@@ -98,10 +100,24 @@ const AppLayout = () => {
       {/* FIX AUDIT #13: no-overscroll prevents iOS bounce exposing white bar behind notch */}
       <div className="h-[100dvh] bg-background overflow-x-hidden flex flex-col no-overscroll">
         <OfflineBanner isOnline={isOnline} />
+        {/* BUG FIX ("annoying gap between chat box and the bottom when the
+            dock hides"): paddingBottom used to be a constant 84px reserved
+            for the floating dock, regardless of whether the dock was
+            actually showing. FloatingDock hides itself on scroll-down
+            (position: fixed, so it never affects layout on its own) — but
+            this padding stayed put, leaving a dead gap where the dock used
+            to be. Now it tracks the same isVisible/isHidden state the dock
+            itself uses (useDockVisibility), so the reserved space collapses
+            in sync with the dock's own hide animation instead of lagging
+            behind it as empty space. */}
         <main
           ref={swipeRef}
-          className="flex-1 min-h-0 flex flex-col overflow-hidden"
-          style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 84px)" }}
+          className="flex-1 min-h-0 flex flex-col overflow-hidden transition-[padding-bottom] duration-300 ease-out"
+          style={{
+            paddingBottom: dockHidden
+              ? "env(safe-area-inset-bottom, 0px)"
+              : `calc(env(safe-area-inset-bottom, 0px) + ${dockVisible ? "84px" : "14px"})`,
+          }}
         >
           {/* FIX AUDIT #2: Error boundary per page so one crash doesn't kill the whole app */}
           <ErrorBoundary context="PageContent">
@@ -129,7 +145,7 @@ const AppLayout = () => {
         <GroicMiniPlayer />
         <GroicFullPlayer />
         <GroicInviteBanner />
-        <FloatingDock />
+        <FloatingDock isVisible={dockVisible} isHidden={dockHidden} />
         <MoodDetector />
         <EmojiScreenEffect />
       </div>

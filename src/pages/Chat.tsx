@@ -1319,8 +1319,12 @@ const Chat = () => {
       if (callRecord) setCurrentCallId((callRecord as any).id);
       toast({ title:mode==="video"?"Video call started 📹":"Voice call started 📞" });
     } catch (err: unknown) {
+      // The call never started, so don't hold the caller in the "wait 39
+      // seconds" cooldown for an attempt that did nothing — give the slot back.
+      callRoomLimiter.refund();
       toast({ title:"Call failed", description: extractErrorMessage(err), variant:"destructive" });
     }
+
     setIsStartingCall(false);
   };
 

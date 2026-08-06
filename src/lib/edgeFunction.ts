@@ -139,7 +139,7 @@ export async function invokeEdgeFunction<T = unknown>(
 
       if (error) {
         const detail = await parseFunctionErrorBody(error);
-        const status = (error as { context?: { response?: Response } })?.context?.response?.status;
+        const status = getErrorStatus(error);
 
         if (isNetworkError(error)) {
           logWarn("edgefn", `${name} network failure`, { requestId, attemptNum, ms }, requestId);

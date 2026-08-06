@@ -98,3 +98,30 @@ export const getStats = (): PeekStats => {
 };
 
 export const clearEventLog = (): void => storage.setJSON(KEY, []);
+
+/**
+ * BUG FIX ("peek guard shows false alarm and its feedback system doesn't
+ * work"): rating a lock "False alarm" in PeekGuard only ever wrote to this
+ * log for the Security Dashboard's read-only stats — it had zero effect on
+ * anything the detector actually did. Tapping the button "worked" in the
+ * sense that it recorded, but nothing about the experience ever changed in
+ * response, which reads as "doesn't work." usePeekDetection now calls this
+ * periodically and loosens its live match threshold when it does, so
+ * repeated false-alarm feedback measurably reduces future false locks
+ * instead of only feeding a dashboard nobody but the very curious opens.
+ *
+ * Deliberately conservative: only kicks in once there's a real signal
+ * (MIN_SAMPLES_FOR_STAT rated events), only ever loosens (never tightens
+ * above what the person configured), and caps out at a small nudge so a
+ * genuinely misconfigured threshold still needs a real settings change.
+ */
+const FALSE_ALARM_RATE_FLOOR = 0.3;
+const MAX_THRESHOLD_RELIEF = 0.06;
+
+export const getFalseAlarmThresholdRelief = (): number => {
+  const { falsePositiveRate, ratedCount } = getStats();
+  if (falsePositiveRate == null || ratedCount < MIN_SAMPLES_FOR_STAT) return 0;
+  if (falsePositiveRate <= FALSE_ALARM_RATE_FLOOR) return 0;
+  const over = falsePositiveRate - FALSE_ALARM_RATE_FLOOR; // 0..0.7
+  return Math.min(MAX_THRESHOLD_RELIEF, over * (MAX_THRESHOLD_RELIEF / 0.7));
+};

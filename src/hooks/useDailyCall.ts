@@ -80,6 +80,23 @@ export const useDailyCall = (): UseDailyCallReturn => {
   // await, so a second concurrent call is rejected immediately instead of
   // racing.
   const joinInProgressRef = useRef(false);
+  // BUG FIX (same "Duplicate DailyIframe instances" error, a second cause):
+  // `DailyCall.destroy()` is itself async (it tears down WebRTC/media
+  // internals), but every call site here used to fire-and-forget it
+  // (`callRef.current.destroy()` with no `await`) before immediately
+  // letting a subsequent `createCallObject()` run. If a fresh joinCall()
+  // landed while a previous destroy() from leaveCall()/unmount hadn't
+  // actually finished yet, Daily's SDK could still consider the old
+  // instance "alive" and reject the new one with the same duplicate-
+  // instance error — even with only one call site now (see CallContext).
+  // This tracks any in-flight destroy so joinCall() can genuinely wait for
+  // it to finish before creating a new instance, closing that window.
+  const pendingDestroyRef = useRef<Promise<void> | null>(null);
+  const destroyCall = useCallback((call: DailyCall) => {
+    pendingDestroyRef.current = Promise.resolve(call.destroy())
+      .catch((err) => console.warn('[useDailyCall] destroy() failed:', err))
+      .then(() => { pendingDestroyRef.current = null; });
+  }, []);
 
   const cleanupAudioElements = useCallback(() => {
     audioElemsRef.current.forEach(a => { a.srcObject = null; a.remove(); });
@@ -131,11 +148,15 @@ export const useDailyCall = (): UseDailyCallReturn => {
       // BUG-03 FIX: destroy existing call object before creating a new one
       if (callRef.current) {
         try { callRef.current.leave(); } catch (err) { console.warn('[useDailyCall] leave() on reconnect (already left):', err); }
-        callRef.current.destroy();
+        destroyCall(callRef.current);
         callRef.current = null;
         cleanupAudioElements();
         if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
       }
+      // Wait out any destroy() still in flight from a *previous* leaveCall()
+      // or unmount before creating a new instance — see pendingDestroyRef's
+      // doc comment above for why this matters.
+      if (pendingDestroyRef.current) await pendingDestroyRef.current;
 
       const call = DailyIframe.createCallObject({
         subscribeToTracksAutomatically: true,
@@ -246,7 +267,7 @@ export const useDailyCall = (): UseDailyCallReturn => {
       // still run right after.
       joinInProgressRef.current = false;
     }
-  }, [attachTrack, attachAudioTrack, cleanupAudioElements]);
+  }, [attachTrack, attachAudioTrack, cleanupAudioElements, destroyCall]);
 
   // CALL-04 FIX: leaveCall is safe even if callState is "joining"
   const leaveCall = useCallback(() => {
@@ -256,7 +277,7 @@ export const useDailyCall = (): UseDailyCallReturn => {
     cleanupAudioElements();
     if (callRef.current) {
       try { callRef.current.leave(); } catch (err) { console.warn('[useDailyCall] leave() failed (already left):', err); }
-      callRef.current.destroy();
+      destroyCall(callRef.current);
       callRef.current = null;
     }
     setCallState("idle");
@@ -268,7 +289,7 @@ export const useDailyCall = (): UseDailyCallReturn => {
     if (localVideoRef.current)  localVideoRef.current.srcObject  = null;
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
     if (screenShareRef.current) screenShareRef.current.srcObject = null;
-  }, [cleanupAudioElements]);
+  }, [cleanupAudioElements, destroyCall]);
 
   const toggleAudio = useCallback(() => {
     if (!callRef.current) return;
@@ -326,11 +347,11 @@ export const useDailyCall = (): UseDailyCallReturn => {
       cleanupAudioElements();
       if (callRef.current) {
         try { callRef.current.leave(); } catch (err) { console.warn('[useDailyCall] leave() failed (already left):', err); }
-        callRef.current.destroy();
+        destroyCall(callRef.current);
         callRef.current = null;
       }
     };
-  }, [cleanupAudioElements]);
+  }, [cleanupAudioElements, destroyCall]);
 
   return {
     joinCall, leaveCall, toggleAudio, toggleVideo, toggleScreenShare,

@@ -35,7 +35,7 @@ import {
 import { detectFacesOffThread, isWorkerSupported, teardownFaceWorker } from "@/lib/faceWorkerClient";
 import { subscribeCameraBus, explainGumError, acquireCamera, type CameraLease } from "@/lib/cameraBus";
 import { Capacitor } from "@capacitor/core";
-import { logPeekEvent } from "@/lib/peekEventLog";
+import { logPeekEvent, getFalseAlarmThresholdRelief } from "@/lib/peekEventLog";
 
 /** requestVideoFrameCallback isn't in lib.dom.d.ts yet in all TS configs. */
 type RVFCVideo = HTMLVideoElement & {
@@ -81,7 +81,14 @@ export interface PeekConfig {
 const DEFAULTS: Required<PeekConfig> = {
   matchThreshold: 0.7,
   minFaceArea: 0.015,
-  consistencyFrames: 2,
+  // BUG FIX ("peek guard shows false alarm"): 2 consistency frames at the
+  // default ~300ms tick (faster still under the "movement/uncertain"
+  // dynamic-FPS tier — as low as ~150ms) meant a single bad frame pair
+  // from a lighting flicker, motion blur, or a half-turned head could
+  // pass the "all frames agree" gate and arm the lock. Bumped to 3 frames
+  // so a real breach still confirms in well under half a second, but one
+  // noisy frame can no longer single-handedly trigger a lock.
+  consistencyFrames: 3,
   lockDelay: 150,
   checkInterval: 300,
   alertOnStranger: true,
@@ -174,6 +181,12 @@ export const usePeekDetection = (
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ownerRef    = useRef<OwnerProfile | null>(null);
+  // See getFalseAlarmThresholdRelief's doc comment — refreshed periodically
+  // (not every tick; it reads/parses localStorage) rather than on a React
+  // state dependency, so a person rating a lock mid-session actually
+  // changes live detector behavior within a few seconds instead of only
+  // taking effect on next mount.
+  const falseAlarmReliefRef = useRef(0);
   const breachBuf   = useRef<boolean[]>([]);
   const reasonBuf   = useRef<NonNullable<PeekDetectionState["reason"]>[]>([]);
   // Monotonic timestamp for FaceLandmarker.detectForVideo — must always increase.
@@ -248,6 +261,17 @@ export const usePeekDetection = (
     reload();
     window.addEventListener("duospace:owner-profile-changed", reload);
     return () => { cancelled = true; window.removeEventListener("duospace:owner-profile-changed", reload); };
+  }, [enabled]);
+
+  // Periodically refresh the false-alarm feedback relief (see
+  // getFalseAlarmThresholdRelief) so rating locks during this session
+  // actually changes live behavior, not just next app launch.
+  useEffect(() => {
+    if (!enabled) { falseAlarmReliefRef.current = 0; return; }
+    const refresh = () => { falseAlarmReliefRef.current = getFalseAlarmThresholdRelief(); };
+    refresh();
+    const id = setInterval(refresh, 5000);
+    return () => clearInterval(id);
   }, [enabled]);
 
   const teardown = useCallback(() => {
@@ -395,7 +419,10 @@ export const usePeekDetection = (
 
     let strangerCount = 0;
     if (ownerRef.current) {
-      const effectiveThreshold = getAdaptiveMatchThreshold(ownerRef.current, c.matchThreshold);
+      const effectiveThreshold = Math.max(
+        0.5,
+        getAdaptiveMatchThreshold(ownerRef.current, c.matchThreshold) - falseAlarmReliefRef.current,
+      );
       for (const f of significant) {
         const sim = matchAgainstOwner(f.embedding, ownerRef.current);
         if (sim < effectiveThreshold) strangerCount++;

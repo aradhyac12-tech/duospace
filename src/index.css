@@ -72,6 +72,13 @@
     --glass-bg: 0 0% 100% / 0.66;
     --glass-border: 230 12% 82% / 0.5;
     --glass-highlight: 0 0% 100% / 0.6;
+    /* Dock-specific glass fill — noticeably more transparent than the
+       shared --glass-bg used by dialogs/cards (0.66) so the floating tab
+       bar reads as true "liquid glass" over the chat behind it, not a
+       frosted-opaque pill. Kept separate from --glass-bg so this change
+       only affects the dock, not every glass surface in the app. */
+    --glass-dock-bg: 0 0% 100% / 0.38;
+    --glass-dock-sheen: 0 0% 100% / 0.85;
     --shadow-glass: 0 8px 32px -8px hsl(230 20% 20% / 0.10), 0 1px 0 0 hsl(0 0% 100% / 0.5) inset;
     --shadow-soft: 0 2px 8px -2px hsl(230 20% 20% / 0.07), 0 1px 2px hsl(230 20% 20% / 0.05);
     --shadow-pop: 0 20px 40px -12px hsl(230 20% 20% / 0.20);
@@ -139,6 +146,8 @@
     --glass-bg: 230 9% 11% / 0.6;
     --glass-border: 0 0% 100% / 0.08;
     --glass-highlight: 0 0% 100% / 0.05;
+    --glass-dock-bg: 230 12% 14% / 0.34;
+    --glass-dock-sheen: 0 0% 100% / 0.14;
     --shadow-glass: 0 8px 32px -8px hsl(0 0% 0% / 0.5), 0 1px 0 0 hsl(0 0% 100% / 0.06) inset;
     --shadow-soft: 0 2px 8px -2px hsl(0 0% 0% / 0.45);
     --shadow-pop: 0 20px 40px -12px hsl(0 0% 0% / 0.65);
@@ -239,28 +248,61 @@
      through theme tokens, so light/dark/vanish all stay correct. */
   .glass-dock {
     position: relative;
+    /* Forces its own compositor layer. Without this, backdrop-filter on an
+       element nested inside an animated/transformed ancestor (the dock
+       sits inside a framer-motion `motion.nav` that animates `transform`
+       for the hide/show slide) can render flat/opaque instead of blurring
+       in some WebKit builds — this is what made the dock look like a
+       plain translucent pill instead of true glass. */
+    isolation: isolate;
+    transform: translateZ(0);
     background:
+      radial-gradient(120% 180% at 30% -40%, hsl(var(--glass-dock-sheen)), transparent 60%),
       linear-gradient(to bottom, hsl(var(--glass-highlight)), transparent 55%),
-      hsl(var(--glass-bg));
+      hsl(var(--glass-dock-bg));
     border: 1px solid hsl(var(--glass-border));
-    -webkit-backdrop-filter: blur(32px) saturate(1.9);
-    backdrop-filter: blur(32px) saturate(1.9);
+    -webkit-backdrop-filter: blur(40px) saturate(2.2) brightness(1.08);
+    backdrop-filter: blur(40px) saturate(2.2) brightness(1.08);
     box-shadow:
-      0 12px 40px -12px hsl(var(--foreground) / 0.28),
-      0 2px 10px -4px hsl(var(--foreground) / 0.14),
+      0 16px 48px -14px hsl(var(--foreground) / 0.32),
+      0 4px 14px -6px hsl(var(--foreground) / 0.16),
       inset 0 1px 0 0 hsl(var(--glass-highlight)),
       inset 0 -1px 0 0 hsl(var(--foreground) / 0.04);
   }
-  /* Inner rim light: a 1px inset ring that catches the "edge" of the glass. */
+  /* Browsers without backdrop-filter support (or with it disabled) would
+     otherwise show a near-invisible pill at 0.38 alpha with no blur to
+     separate it from the content — fall back to a more opaque fill so the
+     dock still reads clearly. */
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .glass-dock {
+      background:
+        linear-gradient(to bottom, hsl(var(--glass-highlight)), transparent 55%),
+        hsl(var(--glass-bg));
+    }
+  }
+  /* Inner rim light: a 1px inset ring that catches the "edge" of the glass,
+     brighter along the top where light would hit real glass. */
   .glass-dock::after {
     content: "";
     position: absolute;
     inset: 1px;
     border-radius: inherit;
     pointer-events: none;
-    border: 1px solid hsl(var(--glass-highlight) / 0.45);
+    border: 1px solid hsl(var(--glass-highlight) / 0.6);
     mask-image: linear-gradient(to bottom, #000 0%, transparent 60%);
     -webkit-mask-image: linear-gradient(to bottom, #000 0%, transparent 60%);
+  }
+  /* Thin bright specular hairline along the very top edge — the detail
+     that reads as "glass" rather than "frosted plastic". */
+  .glass-dock::before {
+    content: "";
+    position: absolute;
+    inset: 0 22% auto 22%;
+    top: 0;
+    height: 1px;
+    border-radius: inherit;
+    pointer-events: none;
+    background: linear-gradient(to right, transparent, hsl(var(--glass-dock-sheen)), transparent);
   }
 
   .surface-1 { box-shadow: var(--shadow-soft); }
@@ -274,6 +316,20 @@
   @keyframes shimmer {
     0% { transform: translateX(-100%); }
     100% { transform: translateX(100%); }
+  }
+
+  /* Disappearing-message "about to vanish" cue — a slow breathing glow that
+     kicks in only in the final ~2.5s before a message expires. Timed purely
+     via each bubble's own `animation-delay` (see MessageBubble in Chat.tsx)
+     so there's no JS timer driving it — the browser starts it automatically
+     at the right instant, `animation-fill-mode: both` keeps it invisible
+     until then. */
+  @keyframes disappear-imminent {
+    0%   { opacity: 0; }
+    12%  { opacity: 0.9; }
+    50%  { opacity: 0.35; }
+    88%  { opacity: 0.9; }
+    100% { opacity: 0; }
   }
 
   @media (prefers-reduced-motion: reduce) {

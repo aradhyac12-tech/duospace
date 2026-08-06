@@ -82,7 +82,7 @@ const ThemeStudio = ({ open, onOpenChange }: Props) => {
 
   const apply = (t: CustomTheme) => {
     hapticLight();
-    applyCustomTheme(t);
+    applyCustomTheme(t, colorMode);
     setActiveId(t.id);
   };
 

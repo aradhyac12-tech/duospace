@@ -5,7 +5,7 @@
     "": {
       "name": "vite_react_shadcn_ts",
       "dependencies": {
-        "@capacitor-community/privacy-screen": "^6.0.0",
+        "@capacitor-community/privacy-screen": "^8.0.0",
         "@capacitor/android": "^8.2.0",
         "@capacitor/app": "^8.1.0",
         "@capacitor/browser": "^8.0.1",
@@ -138,7 +138,7 @@
 
     "@bcoe/v8-coverage": ["@bcoe/v8-coverage@1.0.2", "https://europe-west4-npm.pkg.dev/lovable-core-prod/sandbox-npm-cache/@bcoe/v8-coverage/-/v8-coverage-1.0.2.tgz", {}, "sha512-6zABk/ECA/QYSCQ1NGiVwwbQerUCZ+TQbp64Q3AgmfNvurHH0j8TtXa1qbShXA6qqkpAj4V5W8pP6mLe1mcMqA=="],
 
-    "@capacitor-community/privacy-screen": ["@capacitor-community/privacy-screen@6.0.0", "https://europe-west1-npm.pkg.dev/lovable-core-prod/sandbox-npm-cache/@capacitor-community/privacy-screen/-/privacy-screen-6.0.0.tgz", { "peerDependencies": { "@capacitor/core": ">=7.0.0" } }, "sha512-Fyx7VBK2Kk2eefDCJpiMCI8m3hF1apthQK8R70r8Pqpyig8FIvAL1zBBnsnOQYEGgYDo/IaiVX6xbReg48NukA=="],
+    "@capacitor-community/privacy-screen": ["@capacitor-community/privacy-screen@8.0.0", "https://europe-west1-npm.pkg.dev/lovable-core-prod/sandbox-npm-cache/@capacitor-community/privacy-screen/-/privacy-screen-8.0.0.tgz", { "peerDependencies": { "@capacitor/core": ">=8.0.0" } }, "sha512-XcBTgQ13BdH8xB7arJ2io5rP3aEXcndgDVl/GdFRNwc8TatnV+1U6rGROLtepYLA4Rl0GP7k4zAeykcG+a//3w=="],
 
     "@capacitor/android": ["@capacitor/android@8.2.0", "", { "peerDependencies": { "@capacitor/core": "^8.2.0" } }, "sha512-XLm5OsWLPfXQxDxzFS7SOdMEgGvW+2c7TGLXkTR2cSKdkWK5Abns4imlT5qghKYhjM9r74IrDkBWg/9ALUGNKQ=="],
 

@@ -50,15 +50,37 @@ interface InvokeOptions {
   retry?: boolean;
 }
 
+/**
+ * supabase-js has shipped two different shapes for `FunctionsHttpError.context`:
+ * older versions wrap the fetch Response as `{ response: Response }`, newer
+ * ones set `context` to the `Response` itself. The old code only handled the
+ * wrapped shape, so on current supabase-js the function's JSON body was never
+ * read and every failure surfaced as the useless generic
+ * "Edge Function returned a non-2xx status code".
+ */
+function getErrorResponse(error: unknown): Response | null {
+  const ctx = (error as { context?: unknown })?.context as
+    | { response?: Response; status?: number; text?: unknown }
+    | undefined;
+  if (!ctx) return null;
+  if (typeof (ctx as { text?: unknown }).text === "function") return ctx as unknown as Response;
+  if (ctx.response && typeof ctx.response.text === "function") return ctx.response;
+  return null;
+}
+
+function getErrorStatus(error: unknown): number | undefined {
+  return getErrorResponse(error)?.status ?? (error as { status?: number })?.status;
+}
+
 async function parseFunctionErrorBody(error: unknown): Promise<string | null> {
-  const ctx = (error as { context?: { response?: Response } })?.context;
-  if (!ctx?.response) return null;
+  const response = getErrorResponse(error);
+  if (!response) return null;
   try {
-    const text = await ctx.response.clone().text();
+    const text = await response.clone().text();
     if (!text) return null;
     try {
-      const parsed = JSON.parse(text) as { error?: string; message?: string };
-      return parsed.error || parsed.message || text.slice(0, 300);
+      const parsed = JSON.parse(text) as { error?: string; message?: string; detail?: string };
+      return parsed.error || parsed.message || parsed.detail || text.slice(0, 300);
     } catch {
       return text.slice(0, 300);
     }
@@ -66,6 +88,7 @@ async function parseFunctionErrorBody(error: unknown): Promise<string | null> {
     return null;
   }
 }
+
 
 function isAbortError(e: unknown): boolean {
   return e instanceof Error && (e.name === "AbortError" || /abort/i.test(e.message));
@@ -116,7 +139,7 @@ export async function invokeEdgeFunction<T = unknown>(
 
       if (error) {
         const detail = await parseFunctionErrorBody(error);
-        const status = (error as { context?: { response?: Response } })?.context?.response?.status;
+        const status = getErrorStatus(error);
 
         if (isNetworkError(error)) {
           logWarn("edgefn", `${name} network failure`, { requestId, attemptNum, ms }, requestId);
@@ -139,12 +162,26 @@ export async function invokeEdgeFunction<T = unknown>(
           );
         }
         errorManager.capture("DS-API-001", { component: "edgeFunction", action: name, cause: error, details: { requestId, status, detail } });
+        // supabase-js's own message for any non-2xx is the unhelpful
+        // "Edge Function returned a non-2xx status code" — never show it.
+        const generic = /non-2xx status code/i.test(error.message ?? "");
+        const fallback =
+          status === 401 || status === 403
+            ? "Your session expired. Sign in again and retry."
+            : status === 402
+              ? "No Daily.co API key is configured. Add one in Settings → Calls, or ask your partner to add theirs."
+              : status === 429
+                ? "Too many attempts. Please wait a minute and try again."
+                : status && status >= 500
+                  ? "The server hit an error handling this request. Please try again."
+                  : "The server rejected the request.";
         throw new EdgeFunctionError(
-          detail || error.message || "The server rejected the request.",
+          detail || (generic ? fallback : error.message) || fallback,
           "http",
           requestId,
           status,
         );
+
       }
 
       logInfo("edgefn", `${name} ok`, { requestId, attemptNum, ms }, requestId);

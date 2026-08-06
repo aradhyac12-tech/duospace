@@ -21,13 +21,22 @@ const corsHeaders = {
 const roomCreationLog = new Map<string, number[]>();
 const ROOM_MAX_PER_MIN = 2;
 const WINDOW_MS = 60_000;
+// BUG FIX: this used to record the attempt as soon as it was checked, so a
+// *failed* room creation (bad/missing Daily key, Daily outage) still burned a
+// slot and locked the user out for a minute even though no room was ever
+// created. Checking and recording are now separate: only a successful room
+// creation consumes a slot.
 function isRoomRateLimited(userId: string): boolean {
   const now = Date.now();
   const recent = (roomCreationLog.get(userId) ?? []).filter(t => now - t < WINDOW_MS);
-  if (recent.length >= ROOM_MAX_PER_MIN) return true;
+  roomCreationLog.set(userId, recent);
+  return recent.length >= ROOM_MAX_PER_MIN;
+}
+function recordRoomCreation(userId: string): void {
+  const now = Date.now();
+  const recent = (roomCreationLog.get(userId) ?? []).filter(t => now - t < WINDOW_MS);
   recent.push(now);
   roomCreationLog.set(userId, recent);
-  return false;
 }
 
 // BUG FIX: translate Daily.co's `{ error: "<code>", info: "<detail>" }`
@@ -104,8 +113,8 @@ Deno.serve(async (req) => {
   if (!resolved) {
     return new Response(
       JSON.stringify({
-        error: "No Daily.co key available",
-        detail: "Add your Daily.co API key in Settings, or ask your partner to add theirs.",
+        error: "No Daily.co API key is configured for calls. Add yours in Settings \u2192 Calls, or ask your partner to add theirs.",
+        detail: "Add your Daily.co API key in Settings \u2192 Calls, or ask your partner to add theirs.",
         code: "no_daily_key",
       }),
       { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } },
@@ -157,6 +166,7 @@ Deno.serve(async (req) => {
           { status: res.status, headers: { ...corsHeaders, "Content-Type": "application/json" } },
         );
       }
+      recordRoomCreation(user.id);
       return new Response(JSON.stringify({ url: data.url, name: data.name, id: data.id, keySource: resolved.source }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -279,6 +289,7 @@ Deno.serve(async (req) => {
         );
       }
 
+      recordRoomCreation(user.id);
       return new Response(
         JSON.stringify({
           url: roomData.url, name: roomData.name, id: roomData.id,

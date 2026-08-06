@@ -162,12 +162,26 @@ export async function invokeEdgeFunction<T = unknown>(
           );
         }
         errorManager.capture("DS-API-001", { component: "edgeFunction", action: name, cause: error, details: { requestId, status, detail } });
+        // supabase-js's own message for any non-2xx is the unhelpful
+        // "Edge Function returned a non-2xx status code" — never show it.
+        const generic = /non-2xx status code/i.test(error.message ?? "");
+        const fallback =
+          status === 401 || status === 403
+            ? "Your session expired. Sign in again and retry."
+            : status === 402
+              ? "No Daily.co API key is configured. Add one in Settings → Calls, or ask your partner to add theirs."
+              : status === 429
+                ? "Too many attempts. Please wait a minute and try again."
+                : status && status >= 500
+                  ? "The server hit an error handling this request. Please try again."
+                  : "The server rejected the request.";
         throw new EdgeFunctionError(
-          detail || error.message || "The server rejected the request.",
+          detail || (generic ? fallback : error.message) || fallback,
           "http",
           requestId,
           status,
         );
+
       }
 
       logInfo("edgefn", `${name} ok`, { requestId, attemptNum, ms }, requestId);

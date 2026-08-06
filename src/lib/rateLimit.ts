@@ -36,6 +36,13 @@ const store = new Map<string, RateLimiterState>();
 export interface RateLimiter {
   /** Returns true if the call is allowed, false if rate-limited */
   allow(): boolean;
+  /**
+   * Give back the most recently consumed slot. Call this when the
+   * operation the slot was taken for failed before doing any real work
+   * (e.g. a call that never started) — otherwise a failed attempt locks
+   * the user out for the whole window even though nothing happened.
+   */
+  refund(): void;
   /** How many calls remain in the current window */
   remaining(): number;
   /** Milliseconds until the oldest call expires (0 if not limited) */
@@ -54,6 +61,12 @@ export function createRateLimiter(key: string, opts: RateLimiterOptions): RateLi
       state.timestamps.push(now);
       return true;
     },
+    refund(): void {
+      const state = store.get(key);
+      if (!state || state.timestamps.length === 0) return;
+      state.timestamps.pop();
+    },
+
     remaining(): number {
       const now = Date.now();
       const state = store.get(key);

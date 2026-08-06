@@ -50,15 +50,37 @@ interface InvokeOptions {
   retry?: boolean;
 }
 
+/**
+ * supabase-js has shipped two different shapes for `FunctionsHttpError.context`:
+ * older versions wrap the fetch Response as `{ response: Response }`, newer
+ * ones set `context` to the `Response` itself. The old code only handled the
+ * wrapped shape, so on current supabase-js the function's JSON body was never
+ * read and every failure surfaced as the useless generic
+ * "Edge Function returned a non-2xx status code".
+ */
+function getErrorResponse(error: unknown): Response | null {
+  const ctx = (error as { context?: unknown })?.context as
+    | { response?: Response; status?: number; text?: unknown }
+    | undefined;
+  if (!ctx) return null;
+  if (typeof (ctx as { text?: unknown }).text === "function") return ctx as unknown as Response;
+  if (ctx.response && typeof ctx.response.text === "function") return ctx.response;
+  return null;
+}
+
+function getErrorStatus(error: unknown): number | undefined {
+  return getErrorResponse(error)?.status ?? (error as { status?: number })?.status;
+}
+
 async function parseFunctionErrorBody(error: unknown): Promise<string | null> {
-  const ctx = (error as { context?: { response?: Response } })?.context;
-  if (!ctx?.response) return null;
+  const response = getErrorResponse(error);
+  if (!response) return null;
   try {
-    const text = await ctx.response.clone().text();
+    const text = await response.clone().text();
     if (!text) return null;
     try {
-      const parsed = JSON.parse(text) as { error?: string; message?: string };
-      return parsed.error || parsed.message || text.slice(0, 300);
+      const parsed = JSON.parse(text) as { error?: string; message?: string; detail?: string };
+      return parsed.error || parsed.message || parsed.detail || text.slice(0, 300);
     } catch {
       return text.slice(0, 300);
     }
@@ -66,6 +88,7 @@ async function parseFunctionErrorBody(error: unknown): Promise<string | null> {
     return null;
   }
 }
+
 
 function isAbortError(e: unknown): boolean {
   return e instanceof Error && (e.name === "AbortError" || /abort/i.test(e.message));

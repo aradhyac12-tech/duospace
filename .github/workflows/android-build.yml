@@ -1,0 +1,225 @@
+name: Android Build
+
+# Headless APK pipeline. Triggered by the Lovable "Start Android Build"
+# button (workflow_dispatch from the platform) or manually.
+#
+# Order is load-bearing — do not reorder steps:
+#   deps install -> dep validation -> web build -> android generate/repair
+#   -> cap sync -> native plugin validation -> signing validation
+#   -> gradle -> APK inspection -> artifact upload
+#
+# `npm run cap:add:android` / `npm run cap:sync` (package.json) already wrap
+# verify:deps -> cap add/sync -> patch-native-permissions -> verify:native
+# in the correct order — this workflow calls those, it doesn't reimplement
+# them, so the CLI and CI paths can't drift apart.
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: "release (signed, needs keystore secrets) or debug"
+        required: false
+        default: "release"
+        type: choice
+        options: [release, debug]
+  push:
+    branches: [main]
+    paths:
+      - "android/**"
+      - "native/android/**"
+      - "scripts/patch-native-permissions.mjs"
+      - "scripts/verify-android-build.mjs"
+      - "capacitor.config.json"
+      - "package.json"
+      - ".github/workflows/android-build.yml"
+
+concurrency:
+  group: android-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      BUILD_TYPE: ${{ github.event.inputs.build_type || 'release' }}
+    steps:
+      # ---- 1. checkout + toolchain -----------------------------------
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21" # required by Capacitor 8 / AGP 8.x
+
+      - uses: android-actions/setup-android@v3
+        # Installs cmdline-tools + accepts licenses. Platform/build-tools
+        # versions are pinned by the Capacitor-generated android/ project's
+        # own build.gradle (via the Gradle wrapper), not hardcoded here, so
+        # this step doesn't go stale when Capacitor bumps its target SDK.
+
+      - name: Verify no lockfile mismatch
+        run: |
+          if [ -f bun.lock ] || [ -f bun.lockb ]; then
+            echo "::error::A bun lockfile is present alongside package-lock.json. This project's CI, scripts, and package.json all standardize on npm — a stray bun lockfile is exactly the kind of drift that causes 'installs fine locally, plugin missing in CI' bugs. Delete the bun lockfile."
+            exit 1
+          fi
+          if [ ! -f package-lock.json ]; then
+            echo "::error::package-lock.json missing — npm ci requires it."
+            exit 1
+          fi
+
+      # ---- 2. dependency installation (real node_modules, not just a
+      #         package.json read) --------------------------------------
+      - name: npm ci
+        run: npm ci
+
+      - name: Confirm every @capacitor/* dep actually resolved
+        run: |
+          node -e '
+            const pkg = require("./package.json");
+            const deps = Object.keys(pkg.dependencies || {}).filter(
+              d => d.startsWith("@capacitor/") || d.startsWith("@capacitor-community/") || d.startsWith("@capawesome/")
+            );
+            const fs = require("fs");
+            let missing = [];
+            for (const d of deps) {
+              if (!fs.existsSync(`node_modules/${d}/package.json`)) missing.push(d);
+            }
+            if (missing.length) {
+              console.error("Installed by npm but not resolvable in node_modules (registry/lockfile problem, not a code problem): " + missing.join(", "));
+              process.exit(1);
+            }
+            console.log(`All ${deps.length} Capacitor/community deps resolved in node_modules.`);
+          '
+
+      # ---- 3. dependency validation (version-major cross-check) --------
+      - name: Verify Capacitor dependency versions
+        run: npm run cap:verify:deps
+
+      # ---- 4. web build --------------------------------------------------
+      - name: Build web app
+        run: npm run build
+
+      - name: Validate webDir matches capacitor.config.json
+        run: |
+          WEBDIR=$(node -pe "require('./capacitor.config.json').webDir")
+          if [ ! -d "$WEBDIR" ] || [ -z "$(ls -A "$WEBDIR" 2>/dev/null)" ]; then
+            echo "::error::capacitor.config.json webDir is '$WEBDIR' but that directory doesn't exist or is empty after 'npm run build'. cap sync would silently copy nothing into the native project."
+            exit 1
+          fi
+          echo "webDir '$WEBDIR' OK ($(find "$WEBDIR" -type f | wc -l) files)"
+
+      # ---- 5. android generate/repair ------------------------------------
+      # `cap:add:android` = verify:deps -> cap add android -> patch-native-permissions -> verify:native
+      # Only runs `cap add` if android/ is missing/incomplete; a customized,
+      # already-generated android/ is never blown away here.
+      - name: Generate or repair android/ project
+        run: |
+          if [ ! -f android/app/src/main/AndroidManifest.xml ]; then
+            echo "android/ missing or incomplete — running npx cap add android"
+            npm run cap:add:android
+          else
+            echo "android/ already present — syncing instead of regenerating"
+            npm run cap:sync
+          fi
+
+      # cap:add:android / cap:sync already ran verify:native internally, but
+      # run it again standalone as an explicit, separately-visible CI gate
+      # (this is what turns a missing-plugin problem into a red X here
+      # instead of a runtime crash on a device).
+      - name: Verify native plugin registration (post-sync)
+        run: node scripts/verify-android-build.mjs --native
+
+      - name: Fail fast if capacitor.plugins.json is missing entirely
+        run: |
+          if [ ! -f android/app/src/main/assets/capacitor.plugins.json ]; then
+            echo "::error::android/app/src/main/assets/capacitor.plugins.json does not exist after cap sync. This means cap sync itself did not complete — check the 'Generate or repair android/ project' step's real output above, don't just retry. Do NOT hand-write this file."
+            exit 1
+          fi
+
+      # ---- 6. signing validation -----------------------------------------
+      - name: Configure release signing
+        if: env.BUILD_TYPE == 'release'
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ] || [ -z "$ANDROID_KEYSTORE_PASSWORD" ] || [ -z "$ANDROID_KEY_ALIAS" ] || [ -z "$ANDROID_KEY_PASSWORD" ]; then
+            echo "::error::BUILD_TYPE=release but one or more of ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_PASSWORD / ANDROID_KEY_ALIAS / ANDROID_KEY_PASSWORD repo secrets is not set. Refusing to fall back to an unsigned or debug-signed release build — set the secrets, or dispatch with build_type=debug instead."
+            exit 1
+          fi
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > android/app/release.keystore
+          if ! keytool -list -keystore android/app/release.keystore -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" >/dev/null 2>&1; then
+            echo "::error::keytool could not find alias '$ANDROID_KEY_ALIAS' in the decoded keystore with the given store password. Check ANDROID_KEY_ALIAS and ANDROID_KEYSTORE_PASSWORD — a mismatch here fails silently in Gradle otherwise (falls back to an unsigned/debug artifact)."
+            exit 1
+          fi
+          node scripts/patch-android-signing.mjs
+        # patch-android-signing.mjs injects a signingConfigs.release block
+        # into android/app/build.gradle pointed at release.keystore, and
+        # wires buildTypes.release.signingConfig to it. It does not touch
+        # applicationId/permissions/deep-links — those are already owned by
+        # patch-native-permissions.mjs and must not be duplicated here.
+
+      # ---- 7. gradle -------------------------------------------------------
+      - name: Make gradlew executable
+        run: chmod +x android/gradlew
+
+      - name: Gradle clean
+        working-directory: android
+        run: ./gradlew clean
+
+      - name: Gradle assemble
+        working-directory: android
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ "$BUILD_TYPE" = "release" ]; then
+            ./gradlew assembleRelease --stacktrace
+          else
+            ./gradlew assembleDebug --stacktrace
+          fi
+
+      # ---- 8. APK inspection (verify the artifact itself, not just that
+      #         Gradle exited 0) -------------------------------------------
+      - name: Locate APK
+        id: apk
+        run: |
+          if [ "$BUILD_TYPE" = "release" ]; then
+            APK=$(find android/app/build/outputs/apk/release -name "*.apk" | head -n1)
+          else
+            APK=$(find android/app/build/outputs/apk/debug -name "*.apk" | head -n1)
+          fi
+          if [ -z "$APK" ] || [ ! -f "$APK" ]; then
+            echo "::error::Gradle reported success but no .apk file exists under android/app/build/outputs/apk/. Marking build failed."
+            exit 1
+          fi
+          echo "path=$APK" >> "$GITHUB_OUTPUT"
+
+      - name: Inspect APK contents and manifest
+        run: node scripts/verify-apk.mjs "${{ steps.apk.outputs.path }}"
+
+      # ---- 9. artifact upload + finalization -------------------------------
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: duospace-${{ env.BUILD_TYPE }}-${{ github.sha }}
+          path: ${{ steps.apk.outputs.path }}
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Build summary
+        if: always()
+        run: |
+          echo "### Android build (${{ env.BUILD_TYPE }})" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Commit: ${{ github.sha }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- APK: ${{ steps.apk.outputs.path }}" >> "$GITHUB_STEP_SUMMARY"

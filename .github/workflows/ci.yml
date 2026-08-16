@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      # Typecheck is a real gate now. It used to end in `|| true`, which meant
+      # every type error in the repository was silently swallowed and CI stayed
+      # green while the app was broken.
+      - run: npx tsc -b --noEmit
+      - run: npm test
+      - run: npm run check:rls
+      - run: npm run build

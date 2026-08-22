@@ -1,0 +1,38 @@
+{
+  "appId": "com.duospace.app",
+  "appName": "DuoSpace",
+  "webDir": "dist",
+  "plugins": {
+    "PushNotifications": {
+      "presentationOptions": ["badge", "sound", "alert"]
+    },
+    "SplashScreen": {
+      "launchAutoHide": true,
+      "androidScaleType": "CENTER_CROP",
+      "showSpinner": false,
+      "backgroundColor": "#0a0a0c",
+      "splashFullScreen": true,
+      "splashImmersive": true,
+      "launchShowDuration": 1500
+    },
+    "Keyboard": {
+      "resize": "body",
+      "resizeOnFullScreen": true
+    },
+    "PrivacyScreen": {
+      "enable": false
+    }
+  },
+  "ios": {
+    "contentInset": "automatic",
+    "preferredContentMode": "mobile",
+    "scheme": "DuoSpace",
+    "backgroundColor": "#0a0a0c"
+  },
+  "android": {
+    "backgroundColor": "#0a0a0c",
+    "allowMixedContent": false,
+    "captureInput": true,
+    "webContentsDebuggingEnabled": false
+  }
+}

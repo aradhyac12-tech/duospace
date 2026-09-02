@@ -1,0 +1,23 @@
+node_modules/
+dist/
+dist-ssr/
+.capacitor/
+android/.gradle/
+android/build/
+android/app/build/
+ios/App/Pods/
+ios/App/App/public/
+*.log
+*.tsbuildinfo
+.vite/
+.DS_Store
+
+# Local env files — VITE_* vars here are build-time and end up in the client
+# bundle, so this file existing at all was already something to be careful
+# with; it was never in this ignore list before. No SMTP/Gmail/Resend
+# credentials belong in any .env file regardless — those are Supabase
+# server-side config (Dashboard → Authentication → SMTP, and Dashboard →
+# Edge Functions → Secrets), never a Vite env var, never committed here.
+.env
+.env.local
+.env.*.local

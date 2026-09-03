@@ -1,0 +1,939 @@
+/* Fonts loaded via <link> in index.html for non-blocking performance.
+   JetBrains Mono is a fixed utility face for numerals/status/timestamps
+   (--font-mono), not user-swappable. fontLoader.ts swaps heading/body
+   at runtime per the user's Theme Studio choice. */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* ── Light mode: soft off-white, not stark white ───────────────────── */
+    --background: 230 20% 97%;
+    --foreground: 230 15% 14%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 230 15% 14%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 230 15% 14%;
+
+    /* Single bold accent — electric violet, DuoSpace's brand hue distilled
+       to one tone. Spend it deliberately: CTAs, active states, "mine" bubble. */
+    --primary: 255 90% 62%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 230 15% 93%;
+    --secondary-foreground: 230 15% 14%;
+
+    --muted: 230 15% 93%;
+    --muted-foreground: 230 8% 45%;
+
+    --accent: 255 90% 62%;
+    --accent-foreground: 0 0% 100%;
+
+    /* Semantic status — muted, not saturated */
+    --success: 142 35% 40%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 75% 48%;
+    --warning-foreground: 0 0% 12%;
+    --info: 210 55% 52%;
+    --info-foreground: 0 0% 100%;
+    --destructive: 0 55% 50%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 230 12% 88%;
+    --input: 230 12% 88%;
+    --input-hover: 230 12% 78%;
+    --ring: 255 90% 62%;
+
+    --radius: 0.75rem;
+
+    /* ── Radius scale (Design System 2.0, §3) ──────────────────────────────
+       Theme-invariant, same as --radius above. "floating" and "pill" are
+       new — added to name two shapes already used ad-hoc across the app
+       (the composer/attach-tray's 24-26px floating-surface corner, and the
+       0/full-round pill buttons) so future screens can reference them by
+       intent instead of picking a fresh arbitrary value each time. Purely
+       additive: nothing existing is retargeted to these in this pass. */
+    --radius-sm: calc(var(--radius) - 4px);   /* 8px  — small: chips, inline badges */
+    --radius-md: calc(var(--radius) - 2px);   /* 10px — medium: list rows, inputs */
+    --radius-lg: var(--radius);               /* 12px — large: cards, sheets, dialogs */
+    --radius-floating: 1.625rem;              /* 26px — floating: composer, attach tray, dock */
+    --radius-pill: 9999px;                    /* pill: fully-rounded buttons/badges */
+    /* AUDIT FIX (Phase 7, cross-cutting radius sweep): added the same way
+       floating/pill above were — naming a shape that was ALREADY in use,
+       identically, in three unrelated places (GroicFullPlayer's player
+       frame, Us.tsx's profile hero card, SurpriseReveal's overlay card),
+       each spelling out 28px by hand a different way (`rounded-[28px]`
+       twice, `rounded-[1.75rem]` once) with no shared name despite being
+       the exact same value. Same "purely additive" rule as above: this
+       pass only points those three existing usages at the new name,
+       nothing is retargeted beyond the genuine duplicates found. */
+    --radius-panel: 1.75rem;                  /* 28px — panel: large glass cards/overlays (player frame, profile hero, surprise reveal) */
+
+    /* ── Typography scale (Design System 2.0, §3) ──────────────────────────
+       Names the five roles the brief calls out. Existing components mostly
+       hit these sizes already via arbitrary text-[Npx] values (e.g. the
+       chat header's 15px name, message timestamps at 10-11px mono) — these
+       utilities (below, in @layer utilities) give that existing scale a
+       name rather than changing any sizing. */
+    --text-display: 1.75rem;   /* 28px — hero numbers, empty-state headlines */
+    --text-heading: 0.9375rem; /* 15px — section/identity headings (e.g. chat partner name) */
+    --text-body: 0.875rem;     /* 14px — default reading size (message text) */
+    --text-caption: 0.75rem;   /* 12px — secondary labels, input placeholders */
+    --text-metadata: 0.625rem; /* 10px — timestamps, counts — pairs with --font-mono */
+
+    /* ── Surface hierarchy (flat, restrained — the primary surface system) ──
+       Prefer these over .glass-* for ordinary elevation. Each step is a
+       small, deliberate lightness/tint step off --background, not a new
+       hue, so stacking surfaces reads as "closer to the light" rather than
+       as decoration. surface-0 = page background itself. */
+    --surface-0: 230 20% 97%;   /* = background */
+    --surface-1: 0 0% 100%;     /* = card: dialogs, sheets, list rows */
+    --surface-2: 230 16% 94%;   /* raised-on-card: nested rows, input wells */
+    --surface-3: 230 14% 90%;   /* highest flat elevation: dock, pressed/active wells */
+
+    /* ── Background hierarchy (page-level, not component-level) ── */
+    --bg-canvas: 230 20% 97%;      /* app background */
+    --bg-subcanvas: 230 18% 95%;   /* section backdrops within a page */
+    --bg-overlay-scrim: 230 20% 10% / 0.45; /* dialog/sheet backdrop, NOT pure black */
+
+    --sidebar-background: 230 20% 98%;
+    --sidebar-foreground: 230 15% 20%;
+    --sidebar-primary: 255 90% 62%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 230 15% 93%;
+    --sidebar-accent-foreground: 230 15% 14%;
+    --sidebar-border: 230 12% 88%;
+    --sidebar-ring: 255 90% 62%;
+
+    --warm: 230 20% 97%;
+    --taupe: 230 8% 55%;
+    --sand: 230 15% 90%;
+
+    /* Font tokens — heading/body swapped by fontLoader.ts; mono is fixed */
+    --font-heading: 'Space Grotesk', system-ui, sans-serif;
+    --font-body: 'Inter', system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+    /* Elevation (glass + shadow) tokens — light */
+    --glass-bg: 0 0% 100% / 0.78;
+    --glass-border: 230 12% 82% / 0.5;
+    --glass-highlight: 0 0% 100% / 0.25;
+    /* Dock-specific glass fill — noticeably more transparent than the
+       shared --glass-bg used by dialogs/cards (0.66) so the floating tab
+       bar reads as true "liquid glass" over the chat behind it, not a
+       frosted-opaque pill. Kept separate from --glass-bg so this change
+       only affects the dock, not every glass surface in the app.
+       INTENTIONALLY declared once here and not overridden in the .dark
+       block below (previously it was — a darker, more opaque tint in dark
+       mode) — real frosted glass doesn't turn into a dark tinted panel
+       under a dark background any more than a window does at night; the
+       light haze plus backdrop-filter's blur/saturate is what makes it
+       read as glass over WHATEVER is behind it. This keeps the dock's own
+       material constant while backdrop-filter still correctly picks up
+       and refracts the chat content/theme behind it.
+       Alpha additionally lowered 0.38 -> 0.26 in this pass — paired with
+       the brightness/saturate retune on .glass-dock below, 0.38 was
+       compounding into a "whitish pill" read rather than true
+       translucency; 0.26 is low enough that the blur/saturate stack (not
+       the base fill) is doing the visual work of reading as glass. */
+    --glass-dock-bg: 0 0% 100% / 0.10;
+    --glass-dock-sheen: 0 0% 100% / 0.35;
+    --shadow-glass: 0 8px 32px -8px hsl(230 20% 20% / 0.10), 0 1px 0 0 hsl(0 0% 100% / 0.22) inset;
+    --shadow-soft: 0 2px 8px -2px hsl(230 20% 20% / 0.07), 0 1px 2px hsl(230 20% 20% / 0.05);
+    --shadow-pop: 0 20px 40px -12px hsl(230 20% 20% / 0.20);
+
+    /* Motion tokens */
+    --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+    --ease-smooth: cubic-bezier(0.22, 1, 0.36, 1);
+    --ease-snap: cubic-bezier(0.16, 1, 0.3, 1);
+    --dur-fast: 140ms;
+    --dur-med: 220ms;
+    --dur-slow: 380ms;
+
+    /* ── Layout tokens — named instead of hardcoded so app-shell math (the
+       dock-visibility/content-padding coupling documented in AppLayout.tsx)
+       reads as "why", not magic numbers repeated in two files. ── */
+    --touch-target-min: 44px;   /* minimum practical mobile tap target */
+    --dock-height: 60px;        /* dock pill's own height (fixed h-[60px] on .glass-dock, see FloatingDock.tsx) */
+    --dock-gap: 14px;           /* dock's own offset from the safe-area edge */
+    --dock-reserve: calc(var(--dock-height) + var(--dock-gap) + 14px); /* space reserved under content when the dock is visible — consumed by MessageComposer.tsx (chat), and directly by Map/Gallery/Calls' own dock-adjacent elements */
+    --page-header-height: 64px;
+
+    /* ── Input state tokens ── */
+    --input-invalid: var(--destructive);
+    --input-invalid-foreground: var(--destructive-foreground);
+    --input-valid: var(--success);
+
+    /* ── Offline / connectivity — deliberately NOT --destructive. Loss of
+       connectivity is a transient, recoverable condition, not an error the
+       user caused or a destructive action; it borrows --warning so the
+       destructive channel stays reserved for actual errors/deletion. ── */
+    --offline: var(--warning);
+    --offline-foreground: var(--warning-foreground);
+
+    /* ── Phase 1 (redesign continuation): text tiers, divider, overlay,
+       accent-muted, material-intensity tokens ───────────────────────────
+       Additive only — existing --foreground/--muted-foreground usages
+       across the app are UNCHANGED (same values as before this pass), so
+       nothing that already reaches for them shifts. These are new named
+       tiers for components written or touched going forward: --text-
+       secondary intentionally carries the SAME value --muted-foreground
+       already had, so it's a semantic alias, not a new color; --text-
+       tertiary is a genuinely new, even-quieter tier for the least
+       important text on a screen (hints, disabled captions, watermark-
+       level metadata) that nothing currently uses. */
+    --text-primary: var(--foreground);
+    --text-secondary: 230 8% 45%;   /* = --muted-foreground's existing value */
+    --text-tertiary: 230 8% 62%;    /* new: quieter than --text-secondary */
+
+    /* Divider — semantically distinct name for the same hairline currently
+       drawn with --border, so future divider-only usage (date separators,
+       list-row rules) doesn't have to reach for a token named after input
+       borders. Same value as --border today — not a new color. */
+    --divider: var(--border);
+
+    /* Overlay — a lighter backdrop than --bg-overlay-scrim, for dimming
+       content behind a transient contextual surface (attach tray, context
+       menu) without the heavier "modal is now blocking everything" read a
+       full scrim gives. --bg-overlay-scrim itself is unchanged. */
+    --overlay: 230 20% 10% / 0.24;
+
+    /* Accent-muted — a low-alpha wash of the brand violet for soft
+       selected/active fills (chip backgrounds, badges) that need more
+       presence than a plain hover state but shouldn't compete with a
+       filled --primary control. */
+    --accent-muted: 255 90% 62% / 0.10;
+
+    /* Material intensity — named blur steps so new glass surfaces pick a
+       documented tier instead of a bespoke blur() value. Existing glass
+       utilities (.glass, .glass-strong, .glass-hub, .glass-dock) keep
+       their own already-tuned blur values untouched; these back only the
+       new .glass-sheet utility added in this pass. */
+    --glass-blur-sm: 12px;
+    --glass-blur-md: 24px;
+    --glass-blur-lg: 40px;
+
+    /* Call surface — theme-following (explicit user decision, superseding
+       the earlier "always-dark, FaceTime/WhatsApp convention" choice
+       below). Light mode: white stage, dark text/icons. Dark mode: near-
+       black stage, light text/icons — see the .dark block. Every in-call
+       surface (Calls.tsx, CallOverlay.tsx, IncomingCallOverlay,
+       CallOutcomeScreen, CallStatusBanner) is built on these two tokens
+       plus alpha steps of --call-stage-foreground for button fills, so
+       flipping these two values here is enough to reskin the whole call
+       UI per theme with no other changes. */
+    --call-stage: 0 0% 100%;
+    --call-stage-foreground: 230 15% 14%;
+  }
+
+  .dark {
+    /* ── Dark mode: deep charcoal, never pure black ─────────────────────── */
+    --background: 230 10% 8%;
+    --foreground: 230 15% 95%;
+
+    --card: 230 9% 11%;
+    --card-foreground: 230 15% 95%;
+
+    --popover: 230 9% 11%;
+    --popover-foreground: 230 15% 95%;
+
+    --primary: 255 92% 68%;
+    --primary-foreground: 230 15% 8%;
+
+    --secondary: 230 8% 15%;
+    --secondary-foreground: 230 15% 95%;
+
+    --muted: 230 8% 15%;
+    --muted-foreground: 230 8% 60%;
+
+    --accent: 255 92% 68%;
+    --accent-foreground: 230 15% 8%;
+
+    --success: 142 30% 52%;
+    --success-foreground: 230 15% 8%;
+    --warning: 38 65% 58%;
+    --warning-foreground: 230 15% 8%;
+    --info: 210 55% 65%;
+    --info-foreground: 230 15% 8%;
+    --destructive: 0 55% 55%;
+    --destructive-foreground: 230 15% 95%;
+
+    --border: 230 8% 18%;
+    --input: 230 8% 18%;
+    --input-hover: 230 8% 26%;
+    --ring: 255 92% 68%;
+
+    /* Surface hierarchy — dark. Each step moves a little *lighter* than
+       charcoal, never toward pure black, so elevation still reads as "closer
+       to the light" the same way it does in light mode. */
+    --surface-0: 230 10% 8%;
+    --surface-1: 230 9% 11%;
+    --surface-2: 230 8% 15%;
+    --surface-3: 230 8% 19%;
+
+    --bg-canvas: 230 10% 8%;
+    --bg-subcanvas: 230 9% 10%;
+    --bg-overlay-scrim: 230 15% 4% / 0.6;
+
+    --input-invalid: var(--destructive);
+    --input-invalid-foreground: var(--destructive-foreground);
+    --input-valid: var(--success);
+    --offline: var(--warning);
+    --offline-foreground: var(--warning-foreground);
+
+    /* Phase 1 tokens — dark. Same "additive alias" rule as :root: 
+       --text-secondary matches dark mode's existing --muted-foreground
+       value; --text-tertiary is new and sits BETWEEN --muted-foreground
+       and --card (lower contrast, never all the way to invisible). */
+    --text-primary: var(--foreground);
+    --text-secondary: 230 8% 60%;   /* = dark --muted-foreground's existing value */
+    --text-tertiary: 230 8% 42%;
+    --divider: var(--border);
+    --overlay: 230 15% 4% / 0.4;
+    --accent-muted: 255 92% 68% / 0.16;
+    --glass-blur-sm: 12px;
+    --glass-blur-md: 24px;
+    --glass-blur-lg: 40px;
+
+    /* Call surface — dark mode. See the :root comment: theme-following,
+       near-black stage with light text/icons here, flips to white/dark
+       in light mode. */
+    --call-stage: 230 15% 9%;
+    --call-stage-foreground: 230 20% 97%;
+
+    --sidebar-background: 230 10% 7%;
+    --sidebar-foreground: 230 15% 90%;
+    --sidebar-primary: 255 92% 68%;
+    --sidebar-primary-foreground: 230 15% 8%;
+    --sidebar-accent: 230 8% 15%;
+    --sidebar-accent-foreground: 230 15% 90%;
+    --sidebar-border: 230 8% 18%;
+    --sidebar-ring: 255 92% 68%;
+
+    --warm: 230 10% 8%;
+    --taupe: 230 8% 45%;
+    --sand: 230 8% 20%;
+
+    /* Elevation tokens — dark (a shadow barely reads against charcoal, so
+       these lean on a faint light inset edge rather than shadow alone) */
+    --glass-bg: 230 9% 11% / 0.6;
+    --glass-border: 0 0% 100% / 0.08;
+    --glass-highlight: 0 0% 100% / 0.05;
+    --shadow-glass: 0 8px 32px -8px hsl(0 0% 0% / 0.5), 0 1px 0 0 hsl(0 0% 100% / 0.06) inset;
+    --shadow-soft: 0 2px 8px -2px hsl(0 0% 0% / 0.45);
+    --shadow-pop: 0 20px 40px -12px hsl(0 0% 0% / 0.65);
+
+    /* Text density preset vars — see src/lib/textDensity.ts. Defaults here
+       match the "classic" preset so the app looks right before JS boots. */
+    --text-scale: 1;
+    --leading-boost: 1;
+    --tracking: 0em;
+  }
+
+  /* ── Vanish Mode — Instagram-style dark reskin ─────────────────────────
+     Applied to Chat.tsx's root element while Vanish Mode is on. Every
+     surface in the chat screen already renders through semantic Tailwind
+     tokens (bg-background, bg-card, border-border, text-foreground, etc.)
+     backed by the CSS variables below — so overriding just the variables
+     here re-themes the whole chat tree (header, bubbles, composer,
+     dialogs) without touching any of those components individually.
+     Deliberately near-black rather than reusing .dark's charcoal — Vanish
+     Mode should read as visually distinct from ordinary dark mode, on
+     screen at a glance, the same way Instagram's does — and forces this
+     look regardless of the person's own light/dark theme setting, so a
+     single class covers both starting states. Declared after .dark in
+     source order so it wins the cascade even when both classes are
+     present on ancestors at once (chat root render always sets exactly
+     one of them via Chat.tsx's conditional class, but source order keeps
+     this robust either way). */
+  .vanish-mode {
+    --background: 240 22% 5%;
+    --foreground: 0 0% 97%;
+
+    --card: 240 16% 9%;
+    --card-foreground: 0 0% 97%;
+
+    --popover: 240 16% 9%;
+    --popover-foreground: 0 0% 97%;
+
+    --primary: 258 92% 70%;
+    --primary-foreground: 240 20% 6%;
+
+    --secondary: 240 12% 13%;
+    --secondary-foreground: 0 0% 97%;
+
+    --muted: 240 12% 12%;
+    --muted-foreground: 240 8% 62%;
+
+    --accent: 258 92% 70%;
+    --accent-foreground: 240 20% 6%;
+
+    --destructive: 0 62% 58%;
+    --destructive-foreground: 0 0% 97%;
+
+    --border: 240 12% 18%;
+    --input: 240 12% 18%;
+    --ring: 258 92% 70%;
+
+    --surface-0: 240 22% 5%;
+    --surface-1: 240 16% 9%;
+    --surface-2: 240 12% 13%;
+    --surface-3: 240 10% 17%;
+
+    --bg-canvas: 240 22% 5%;
+    --bg-subcanvas: 240 18% 7%;
+    --bg-overlay-scrim: 240 25% 2% / 0.7;
+
+    --text-primary: var(--foreground);
+    --text-secondary: 240 8% 62%;
+    --text-tertiary: 240 8% 44%;
+    --divider: var(--border);
+    --overlay: 240 25% 2% / 0.5;
+    --accent-muted: 258 92% 70% / 0.16;
+
+    --glass-bg: 240 16% 9% / 0.65;
+    --glass-border: 0 0% 100% / 0.07;
+    --glass-highlight: 0 0% 100% / 0.04;
+    --shadow-glass: 0 8px 32px -8px hsl(0 0% 0% / 0.6), 0 1px 0 0 hsl(0 0% 100% / 0.05) inset;
+    --shadow-soft: 0 2px 8px -2px hsl(0 0% 0% / 0.55);
+    --shadow-pop: 0 20px 40px -12px hsl(0 0% 0% / 0.75);
+  }
+}
+
+@layer base {
+  html {
+    /* % (not px) so this still respects the user's own browser/OS text-size
+       accessibility setting as the base, multiplied by the chosen preset.
+       Because font-size, padding, gap, and most icon sizing in this app's
+       Tailwind classes are all rem-based, scaling the root scales all of
+       them together — no per-component changes needed. */
+    font-size: calc(100% * var(--text-scale));
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: var(--font-body);
+    line-height: calc(1.5 * var(--leading-boost));
+    letter-spacing: var(--tracking);
+  }
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-heading);
+    letter-spacing: calc(-0.01em + var(--tracking));
+  }
+}
+
+@layer utilities {
+  /* Typography scale (Design System 2.0, §3) — see the --text-* tokens'
+     doc comment above. Additive only; no existing component was switched
+     to these in this pass, so this can't regress anything currently
+     shipping. font-heading pairs display/heading with Space Grotesk (the
+     brief's "strong hierarchy" ask); body/caption/metadata stay on the
+     Inter body face, metadata also gets font-mono to match how
+     timestamps already render (JetBrains Mono, tabular figures). */
+  .text-display {
+    font-family: var(--font-heading);
+    font-size: var(--text-display);
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+    font-weight: 600;
+  }
+  .text-heading {
+    font-family: var(--font-heading);
+    font-size: var(--text-heading);
+    line-height: 1.25;
+    letter-spacing: -0.01em;
+    font-weight: 600;
+  }
+  .text-body {
+    font-size: var(--text-body);
+    line-height: 1.5;
+    font-weight: 400;
+  }
+  .text-caption {
+    font-size: var(--text-caption);
+    line-height: 1.4;
+    color: hsl(var(--muted-foreground));
+  }
+  .text-metadata {
+    font-family: var(--font-mono);
+    font-size: var(--text-metadata);
+    line-height: 1.3;
+    letter-spacing: 0;
+    color: hsl(var(--muted-foreground));
+  }
+
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .safe-top {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+  .safe-left {
+    padding-left: env(safe-area-inset-left, 0px);
+  }
+  .safe-right {
+    padding-right: env(safe-area-inset-right, 0px);
+  }
+  /* Full safe-area inset shorthand */
+  .safe-all {
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+  }
+  /* Prevents content jumping when Android soft keyboard appears.
+     FIX AUDIT #13: Use dvh (dynamic viewport height) so the chat list
+     shrinks correctly when the keyboard pushes the viewport. Falls back
+     to svh → vh for older Android WebViews. */
+  .h-screen-dynamic {
+    height: 100dvh;
+  }
+  /* Prevents over-scroll bounce on iOS that makes the page scroll
+     outside safe area, revealing white bars behind the notch */
+  .no-overscroll {
+    overscroll-behavior: none;
+  }
+
+  /* ── Surface hierarchy utilities (PRIMARY elevation system) ──────────
+     Flat, restrained steps off the token scale above — prefer these over
+     .glass-* for ordinary chrome (dock, headers, sheets, dialogs, rows).
+     .glass-* utilities remain below for the handful of existing feature
+     surfaces (Calls, Profile) that already use them and are out of scope
+     for this pass, but new app-shell work should reach for these instead. */
+  .surface-0 { background: hsl(var(--surface-0)); }
+  .surface-1 { background: hsl(var(--surface-1)); }
+  .surface-2 { background: hsl(var(--surface-2)); }
+  .surface-3 { background: hsl(var(--surface-3)); }
+
+  /* Standard feature-page horizontal padding. FIX (shell redesign,
+     "px-3/px-4/px-5/px-6 scattered without a system"): px-5 was already
+     the majority value across Us/Shayari/Playlist and matches PageHeader's
+     own horizontal padding — this makes that the one documented standard
+     to reach for on new/updated page content, instead of picking a value
+     ad hoc per page. Not force-applied retroactively to every existing
+     page's inner spacing this pass (several — Gallery's photo grid,
+     MapView's overlay controls — have padding tied to a specific visual
+     layout that needs eyes-on verification before changing; see the
+     redesign session notes for what's still open here). */
+  .page-px { padding-left: 1.25rem; padding-right: 1.25rem; }
+
+  /* SUPERSEDED — this "flat, no glass" direction was explored and never
+     actually wired into FloatingDock (which uses .glass-dock below, not
+     this). Left in place only because some other surface may reference
+     it — grep found none in src/ as of this pass, but removing CSS that
+     might be a future intentional toggle isn't this redesign's call to
+     make silently. Per the current explicit direction: the dock IS glass,
+     tuned in .glass-dock below — this comment exists so a future pass
+     doesn't wire this back in thinking it's the live dock treatment. */
+  .surface-dock {
+    background: hsl(var(--surface-3));
+    border: 1px solid hsl(var(--border));
+    box-shadow: var(--shadow-pop);
+  }
+
+  /* ── Glassmorphism utilities (legacy — kept for existing feature surfaces
+     not covered by this pass; do not add new usages) ─────────────────── */
+  .glass {
+    background: hsl(var(--glass-bg));
+    border: 1px solid hsl(var(--glass-border));
+    box-shadow: var(--shadow-glass);
+    -webkit-backdrop-filter: blur(12px) saturate(1.3);
+    backdrop-filter: blur(12px) saturate(1.3);
+  }
+  .glass-strong {
+    background: hsl(var(--glass-bg));
+    border: 1px solid hsl(var(--glass-border));
+    -webkit-backdrop-filter: blur(16px) saturate(1.4);
+    backdrop-filter: blur(16px) saturate(1.4);
+    box-shadow: var(--shadow-glass);
+  }
+  .glass-subtle {
+    background: hsl(var(--card) / 0.75);
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+  }
+  /* Hub panel glass — same material FAMILY as .glass-dock (compositor
+     isolation so blur survives inside an animated/scaled ancestor, inner
+     rim light, specular top hairline) but built on the theme-aware
+     --glass-bg tokens rather than the dock's theme-invariant ones, and a
+     touch more opaque (.glass-strong's blur/alpha) since this panel needs
+     to host readable icon+label content, not just float as a nav bar.
+     "Same family, not identical opacity" per the material-system spec. */
+  .glass-hub {
+    isolation: isolate;
+    transform: translateZ(0);
+    background:
+      radial-gradient(120% 140% at 25% -20%, hsl(var(--glass-highlight)), transparent 55%),
+      hsl(var(--glass-bg));
+    border: 1px solid hsl(var(--glass-border));
+    -webkit-backdrop-filter: blur(16px) saturate(1.4);
+    backdrop-filter: blur(16px) saturate(1.4);
+    box-shadow:
+      0 20px 56px -16px hsl(var(--foreground) / 0.28),
+      0 6px 16px -8px hsl(var(--foreground) / 0.14),
+      inset 0 1px 0 0 hsl(var(--glass-highlight));
+  }
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .glass-hub { background: hsl(var(--card) / 0.96); }
+  }
+  /* Phase 1 addition — contextual-surface glass: the attach tray, message
+     context menu, and similar transient controls that float ON TOP of
+     Chat content briefly, then dismiss. Deliberately its OWN class (not a
+     reuse of .glass-hub) so retuning the hub grid's material later can't
+     silently move these too — same token family, tuned lighter (md blur,
+     not the hub's heavy blur(28px)+saturate(1.6)) since these sit closer
+     to the content they're contextualizing rather than acting as a
+     separate "space" like the hub panel does. */
+  .glass-sheet {
+    isolation: isolate;
+    background: hsl(var(--glass-bg));
+    border: 1px solid hsl(var(--glass-border));
+    -webkit-backdrop-filter: blur(10px) saturate(1.3);
+    backdrop-filter: blur(10px) saturate(1.3);
+    box-shadow: var(--shadow-glass);
+  }
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .glass-sheet { background: hsl(var(--card) / 0.96); }
+  }
+  /* Toast glass — lightweight floating notification material.
+     Lighter than .glass-sheet: less blur,更低 alpha, so it reads
+     as a transient whisper, not a panel. */
+  .glass-toast {
+    position: relative;
+    background: hsl(var(--glass-bg) / 0.90);
+    border: 1px solid hsl(var(--glass-border) / 0.5);
+    -webkit-backdrop-filter: blur(8px) saturate(1.2);
+    backdrop-filter: blur(8px) saturate(1.2);
+    box-shadow: 0 4px 16px -4px hsl(var(--foreground) / 0.10);
+  }
+
+  /* Liquid-glass dock — the iOS/Instagram floating tab bar treatment:
+     heavy blur + saturation so content behind it reads as refracted colour,
+     a soft translucent fill, a bright top hairline (specular edge) and a
+     wide soft drop shadow that lifts it off the content. All values run
+     through theme tokens, so light/dark/vanish all stay correct. */
+  .glass-dock {
+    position: relative;
+    /* Forces its own compositor layer. Without this, backdrop-filter on an
+       element nested inside an animated/transformed ancestor (the dock
+       sits inside a framer-motion `motion.nav` that animates `transform`
+       for the hide/show slide) can render flat/opaque instead of blurring
+       in some WebKit builds — this is what made the dock look like a
+       plain translucent pill instead of true glass. */
+    isolation: isolate;
+    transform: translateZ(0);
+    background:
+      radial-gradient(120% 180% at 30% -40%, hsl(var(--glass-dock-sheen)), transparent 60%),
+      linear-gradient(to bottom, hsl(var(--glass-highlight)), transparent 55%),
+      hsl(var(--glass-dock-bg));
+    border: 1px solid hsl(var(--glass-border));
+    /* FIX ("reads as a whitish/opaque pill, not true glass"): the previous
+       values here (brightness(1.08), saturate(2.2), 0.38 alpha) compounded
+       into exactly that — an over-brightened, over-saturated, moderately
+       opaque fill reads as milky white rather than as something you can
+       see *through*. Real translucent glass leans on blur+saturate to do
+       almost all the work, with the base fill itself quite low-alpha and
+       brightness left close to neutral. Blur stays high (this is still a
+       true frosted-glass surface, not a flat card) — only the values that
+       were pushing it toward "whitish" changed. */
+    -webkit-backdrop-filter: blur(24px) saturate(1.5) brightness(1.01);
+    backdrop-filter: blur(24px) saturate(1.5) brightness(1.01);
+    box-shadow:
+      0 8px 32px -10px hsl(var(--foreground) / 0.15),
+      0 2px 8px -4px hsl(var(--foreground) / 0.08),
+      inset 0 1px 0 0 hsl(var(--glass-highlight) / 0.4),
+      inset 0 -1px 0 0 hsl(var(--foreground) / 0.03);
+  }
+  /* Browsers without backdrop-filter support (or with it disabled) would
+     otherwise show a near-invisible pill at 0.38 alpha with no blur to
+     separate it from the content — fall back to a more opaque fill so the
+     dock still reads clearly. */
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .glass-dock {
+      background:
+        linear-gradient(to bottom, hsl(var(--glass-highlight)), transparent 55%),
+        hsl(var(--glass-bg));
+    }
+  }
+  /* Inner rim light: a 1px inset ring that catches the "edge" of the glass,
+     brighter along the top where light would hit real glass. */
+  .glass-dock::after {
+    content: "";
+    position: absolute;
+    inset: 1px;
+    border-radius: inherit;
+    pointer-events: none;
+    border: 1px solid hsl(var(--glass-highlight) / 0.30);
+    mask-image: linear-gradient(to bottom, #000 0%, transparent 50%);
+    -webkit-mask-image: linear-gradient(to bottom, #000 0%, transparent 50%);
+  }
+  /* Thin bright specular hairline along the very top edge — the detail
+     that reads as "glass" rather than "frosted plastic". */
+  .glass-dock::before {
+    content: "";
+    position: absolute;
+    inset: 0 22% auto 22%;
+    top: 0;
+    height: 1px;
+    border-radius: inherit;
+    pointer-events: none;
+    background: linear-gradient(to right, transparent 15%, hsl(var(--glass-dock-sheen) / 0.5) 50%, transparent 85%);
+  }
+
+  /* Phase 2 (visual correction) — dock ACTIVE tab as a small glass "lens"
+     nested inside the dock's own larger glass material, replacing the flat
+     bg-primary/12 fill the active pill used before. A lens should look like
+     a denser, more refractive pocket of the SAME material (not a different
+     coloured chip dropped on top): a touch more backdrop saturation than
+     the dock itself, a soft accent-tinted core, a bright inner rim that's
+     brighter on the upper-left (where the dock's own sheen originates) and
+     a faint pressed-in shadow along the lower-right — the "small lens"
+     read Apple's own Liquid Glass controls use for their selected state.
+     Theme-invariant like --glass-dock-bg/sheen (see the comment on those
+     tokens above) so it doesn't re-tint between light/dark. */
+  .glass-dock-lens {
+    isolation: isolate;
+    border-radius: 9999px;
+    background:
+      radial-gradient(120% 140% at 28% 15%, hsl(0 0% 100% / 0.5), transparent 60%),
+      hsl(var(--primary) / 0.14);
+    -webkit-backdrop-filter: saturate(2.1) brightness(1.03);
+    backdrop-filter: saturate(2.1) brightness(1.03);
+    box-shadow:
+      inset 0 1px 0 0 hsl(0 0% 100% / 0.65),
+      inset 0 -1px 1px 0 hsl(230 20% 10% / 0.10),
+      inset 0 0 0 1px hsl(var(--primary) / 0.18),
+      0 1px 3px -1px hsl(var(--primary) / 0.35);
+  }
+
+  /* Accessibility (section 26): OS-level "Reduce Transparency" preference
+     — distinct from the `@supports not (backdrop-filter)` blocks above
+     (those are a browser CAPABILITY fallback; this is a user-chosen
+     ACCESSIBILITY preference on a browser that fully supports
+     backdrop-filter). Reuses the exact same near-opaque fallback
+     backgrounds already designed for the capability case, and
+     additionally turns backdrop-filter off entirely — leaving heavy
+     blur+saturate active under a merely more-opaque fill would still be
+     visually busy for someone who specifically asked for less
+     transparency. Scoped to the three glass surfaces this phase actually
+     touches (hub panel, contextual sheets/composer, dock); the legacy
+     .glass/.glass-strong classes belong to other feature screens this
+     phase is explicitly not allowed to touch. Confirmed via grep before
+     writing this: no prefers-reduced-transparency handling existed
+     anywhere in the codebase before this. */
+  @media (prefers-reduced-transparency: reduce) {
+    .glass-hub {
+      background: hsl(var(--card) / 0.96);
+      -webkit-backdrop-filter: none;
+      backdrop-filter: none;
+    }
+    .glass-sheet {
+      background: hsl(var(--card) / 0.96);
+      -webkit-backdrop-filter: none;
+      backdrop-filter: none;
+    }
+    .glass-dock {
+      background:
+        linear-gradient(to bottom, hsl(var(--glass-highlight) / 0.6), transparent 55%),
+        hsl(var(--glass-bg) / 0.85);
+      -webkit-backdrop-filter: none;
+      backdrop-filter: none;
+    }
+  }
+
+  /* Shadow-only elevation (composes with the .surface-N background
+     utilities above when a surface also needs to visually lift, e.g. a
+     dialog: className="surface-1 elevation-2"). Renamed from the previous
+     surface-1/2/3 (which collided with the background-hierarchy utilities
+     introduced in this pass) — grep-confirmed unused anywhere in src/ before
+     renaming, so this is a safe, non-breaking rename. */
+  .elevation-1 { box-shadow: var(--shadow-soft); }
+  .elevation-2 { box-shadow: var(--shadow-glass); }
+  .elevation-3 { box-shadow: var(--shadow-pop); }
+  .press { transition: transform 120ms var(--ease-smooth); }
+  .press:active { transform: scale(0.97); }
+  .lift { transition: transform 200ms var(--ease-smooth), box-shadow 200ms var(--ease-smooth); }
+  .lift:hover { transform: translateY(-2px); box-shadow: var(--shadow-pop); }
+
+  @keyframes shimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+  }
+
+  /* Disappearing-message "about to vanish" cue — a slow breathing glow that
+     kicks in only in the final ~2.5s before a message expires. Timed purely
+     via each bubble's own `animation-delay` (see MessageBubble in Chat.tsx)
+     so there's no JS timer driving it — the browser starts it automatically
+     at the right instant, `animation-fill-mode: both` keeps it invisible
+     until then. */
+  @keyframes disappear-imminent {
+    0%   { opacity: 0; }
+    12%  { opacity: 0.9; }
+    50%  { opacity: 0.35; }
+    88%  { opacity: 0.9; }
+    100% { opacity: 0; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.001ms !important;
+      transition-duration: 0.001ms !important;
+    }
+  }
+}
+
+/* ── FIX AUDIT #13: Android keyboard overlap ──────────────────────────────────
+   On Android, when the soft keyboard opens it resizes the visual viewport.
+   CORRECTION (Session 6, keyboard audit): this comment used to claim "We
+   use the Visual Viewport API in JS (see AppLayout)" — that was false as
+   of this session; grep confirmed AppLayout.tsx has no such code, and (per
+   Session 3's audit) no visualViewport/Keyboard usage existed anywhere in
+   src/ before this phase. The actual JS-side viewport handling now lives
+   in src/hooks/useKeyboardOpen.ts, consumed by MessageComposer.tsx and
+   Chat.tsx — not AppLayout. Leaving this note so a future session doesn't
+   go looking for phantom code in AppLayout again. The CSS below (100dvh
+   support) is real and unrelated to that JS. */
+@supports (height: 100dvh) {
+  .flex-col.h-\[100dvh\] {
+    height: 100dvh;
+  }
+}
+
+/* Leaflet map container — ensure it fills its parent div for proper tile rendering */
+.leaflet-container {
+  height: 100% !important;
+  width: 100% !important;
+}
+
+/* Smooth momentum scrolling on iOS chat list */
+.overflow-y-auto {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Fix text selection color to match brand */
+::selection {
+  background: hsl(var(--primary) / 0.25);
+}
+
+/* ── Focus visible — keyboard accessibility ───────────────────────────────── */
+:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
+
+/* ── ROOT-CAUSE FIX ("the annoying box while typing") ────────────────────────
+   Per the HTML spec, TEXT-ENTRY controls (input / textarea / select /
+   contenteditable) ALWAYS match :focus-visible — even when focused by tap,
+   unlike buttons which only match on keyboard focus. The global rule above
+   therefore painted a hard 2px rectangle around EVERY text field the instant
+   typing began, app-wide: chat composer, music search, settings forms,
+   everywhere. That rectangle — not a wrapper, not backdrop-filter — was the
+   "additional box that appears when you start typing".
+
+   Text entry keeps accessibility without the ugly rectangle: the outline is
+   suppressed and focus is expressed through the field's own border/ring
+   treatment instead (shadcn Input/Textarea carry a soft accent ring; the chat
+   composer pill responds as one material via :focus-within below). Buttons,
+   links and all other controls keep the standard keyboard-focus outline. */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+[contenteditable]:focus-visible {
+  outline: none;
+}
+
+/* Focus response for composite input containers: when any child field is
+   focused, the whole glass surface answers subtly (a faint accent edge on
+   top of its existing shadow/highlight) rather than an opaque rectangle
+   appearing behind the caret. Same material before and after — only the
+   light changes. */
+.glass-sheet:focus-within {
+  border-color: hsl(var(--primary) / 0.35);
+  box-shadow:
+    var(--shadow-glass),
+    inset 0 1px 0 0 hsl(var(--glass-highlight)),
+    0 0 0 1px hsl(var(--primary) / 0.12);
+}
+
+/* ── GroicFullPlayer seek bar ────────────────────────────────────────────────
+   The player's progress control: a hairline track whose played portion is
+   filled with the accent (via --fill-pct, set inline by the component from
+   the current position — one custom property, no extra DOM to keep in
+   sync). The thumb is a small dot that grows while grabbed so the gesture
+   feels physical; the hit area stays full-height for touch. Still a native
+   <input type=range> underneath — keyboard/screen-reader seeking intact. */
+.groic-range {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 22px;
+  background: transparent;
+  cursor: pointer;
+}
+.groic-range::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 9999px;
+  background:
+    linear-gradient(
+      to right,
+      hsl(var(--primary)) 0%,
+      hsl(var(--primary)) var(--fill-pct, 0%),
+      hsl(var(--foreground) / 0.14) var(--fill-pct, 0%),
+      hsl(var(--foreground) / 0.14) 100%
+    );
+}
+.groic-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 12px;
+  width: 12px;
+  margin-top: -4px;
+  border-radius: 9999px;
+  background: hsl(var(--foreground));
+  box-shadow: 0 1px 4px hsl(var(--foreground) / 0.35);
+  transition: transform 120ms var(--ease-smooth);
+}
+.groic-range:active::-webkit-slider-thumb {
+  transform: scale(1.35);
+}
+.groic-range:focus-visible {
+  outline: none;
+}
+.groic-range:focus-visible::-webkit-slider-thumb {
+  box-shadow:
+    0 0 0 3px hsl(var(--ring) / 0.3),
+    0 1px 4px hsl(var(--foreground) / 0.35);
+}
+.groic-range::-moz-range-track {
+  height: 4px;
+  border-radius: 9999px;
+  background: hsl(var(--foreground) / 0.14);
+}
+.groic-range::-moz-range-progress {
+  height: 4px;
+  border-radius: 9999px;
+  background: hsl(var(--primary));
+}
+.groic-range::-moz-range-thumb {
+  height: 12px;
+  width: 12px;
+  border: none;
+  border-radius: 9999px;
+  background: hsl(var(--foreground));
+  box-shadow: 0 1px 4px hsl(var(--foreground) / 0.35);
+}
+
+/* ── Prevent 300ms tap delay on mobile ────────────────────────────────────── */
+button, a, [role="button"] {
+  touch-action: manipulation;
+}
+

@@ -1,0 +1,39 @@
+project_id = "jzlpelxwzjjpddqcrtpu"
+
+# NOTE: this file only takes effect if/when this project is managed via the
+# Supabase CLI (`supabase link` + `supabase db push` / config push). If this
+# project's Auth URL Configuration is set through the Supabase Dashboard UI
+# instead, THIS FILE IS NOT what's live — the Dashboard settings are, and
+# must be edited there directly. Kept in sync here regardless, since it's
+# the source of truth if the CLI is ever used, and so this file doesn't
+# silently drift from reality.
+#
+# site_url changed to the current production frontend (Vercel). The old
+# Lovable preview + its id-preview URL are kept in additional_redirect_urls
+# (not removed) so the Lovable editor/preview environment keeps working —
+# remove them here (and in the Dashboard) once that's no longer needed.
+[auth]
+site_url = "https://duospace-ten.vercel.app"
+additional_redirect_urls = [
+  "https://duospace-ten.vercel.app/**",
+  "https://duospace-ten.vercel.app/auth",
+  "https://duospace-ten.vercel.app/auth/callback",
+  "https://duospace-ten.vercel.app/reset-password",
+  "https://web-duospace.lovable.app/auth/callback",
+  "https://web-duospace.lovable.app/reset-password",
+  "https://id-preview--8d9c3eda-6653-478e-bc47-b4ffd4636f5f.lovable.app/auth/callback",
+  "https://id-preview--8d9c3eda-6653-478e-bc47-b4ffd4636f5f.lovable.app/reset-password",
+  "http://localhost:8080/auth/callback",
+  "http://localhost:8080/reset-password",
+  "duospace://auth",
+  "duospace://auth/reset-password"
+]
+
+[functions.qr-anon-issue]
+verify_jwt = false
+
+[functions.redeem-qr-token]
+verify_jwt = false
+
+[functions.check-qr-token-status]
+verify_jwt = false

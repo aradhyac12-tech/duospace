@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Android 14+ requires this specific permission (in addition to the
+         general FOREGROUND_SERVICE permission, already declared at the app
+         level in scripts/patch-native-permissions.mjs for the calling
+         feature) for any service declaring foregroundServiceType
+         "mediaPlayback". Declared here, in the plugin's own manifest —
+         Gradle's manifest merger folds uses-permission entries from every
+         library module into the final app manifest automatically, the
+         same way audio-route's BLUETOOTH_CONNECT permission is merged
+         without needing any change to the app's own manifest or the patch
+         script. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <application>
+        <!-- MediaSessionService — see MediaPlaybackService.kt. exported=false:
+             nothing outside this app should be able to bind to it directly;
+             the OS delivers lock-screen/Bluetooth/notification commands
+             through the MediaSession the service publishes, not by binding
+             to the service from another process. -->
+        <service
+            android:name=".MediaPlaybackService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback">
+            <intent-filter>
+                <action android:name="androidx.media3.session.MediaSessionService" />
+            </intent-filter>
+        </service>
+    </application>
+</manifest>

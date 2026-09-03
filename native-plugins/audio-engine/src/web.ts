@@ -49,6 +49,7 @@ export class AudioEngineWeb extends WebPlugin implements DuospaceAudioEnginePlug
   private queue: AudioEngineTrack[] = [];
   private currentIndex = -1;
   private positionTimer: number | null = null;
+  private lastKnownDuration = 0;
 
   private ensureAudio(): HTMLAudioElement {
     if (this.audio) return this.audio;
@@ -65,7 +66,11 @@ export class AudioEngineWeb extends WebPlugin implements DuospaceAudioEnginePlug
     el.addEventListener("waiting", () => this.notifyListeners("bufferingChanged", { buffering: true }));
     el.addEventListener("playing", () => this.notifyListeners("bufferingChanged", { buffering: false }));
     el.addEventListener("durationchange", () => {
-      if (isFinite(el.duration)) this.notifyListeners("durationChanged", { durationSeconds: el.duration });
+      if (isFinite(el.duration)) {
+        this.lastKnownDuration = el.duration;
+        this.notifyListeners("durationChanged", { durationSeconds: el.duration });
+        this.updateMediaSessionPositionState();
+      }
     });
     el.addEventListener("ended", () => {
       this.notifyListeners("playbackStateChanged", { state: "ended" });
@@ -148,27 +153,64 @@ export class AudioEngineWeb extends WebPlugin implements DuospaceAudioEnginePlug
     } catch { /* MediaMetadata not available in this browser */ }
   }
 
+  private updateMediaSessionPositionState() {
+    if (typeof navigator === "undefined" || !("mediaSession" in navigator)) return;
+    const mediaSession = navigator.mediaSession as MediaSession & {
+      setPositionState?: (state: { duration: number; playbackRate?: number; position?: number }) => void;
+    };
+    const duration = isFinite(this.audio?.duration ?? NaN)
+      ? this.audio?.duration ?? 0
+      : this.lastKnownDuration;
+    const position = this.audio?.currentTime ?? 0;
+    if (!mediaSession.setPositionState || duration <= 0 || !isFinite(duration) || position < 0) return;
+    try {
+      mediaSession.setPositionState({
+        duration,
+        playbackRate: this.audio?.playbackRate || 1,
+        position: Math.min(position, duration),
+      });
+    } catch { /* Some browsers reject position state while metadata is loading. */ }
+  }
+
   private wireMediaSessionActionHandlers() {
     if (typeof navigator === "undefined" || !("mediaSession" in navigator)) return;
     const ms = navigator.mediaSession;
-    try {
-      ms.setActionHandler("play", () => this.play());
-      ms.setActionHandler("pause", () => this.pause());
-      ms.setActionHandler("nexttrack", () => this.next());
-      ms.setActionHandler("previoustrack", () => this.previous());
-      ms.setActionHandler("seekto", (details) => {
-        if (typeof details.seekTime === "number") this.seek({ positionSeconds: details.seekTime });
-      });
-    } catch { /* an unsupported action handler throws in some older browsers — non-fatal */ }
+    const handlers: Array<[MediaSessionAction, MediaSessionActionHandler]> = [
+      ["play", () => { void this.play(); }],
+      ["pause", () => { void this.pause(); }],
+      ["nexttrack", () => { void this.next(); }],
+      ["previoustrack", () => { void this.previous(); }],
+      ["seekbackward", (details) => {
+        void this.seek({ positionSeconds: Math.max(0, (this.audio?.currentTime ?? 0) - (details.seekOffset ?? 10)) });
+      }],
+      ["seekforward", (details) => {
+        void this.seek({ positionSeconds: (this.audio?.currentTime ?? 0) + (details.seekOffset ?? 10) });
+      }],
+      ["seekto", (details) => {
+        if (typeof details.seekTime === "number") void this.seek({ positionSeconds: details.seekTime });
+      }],
+    ];
+    for (const [action, handler] of handlers) {
+      try { ms.setActionHandler(action, handler); } catch { /* Unsupported action — leave it unavailable. */ }
+    }
   }
 
   async load(options: LoadOptions): Promise<void> {
     const el = this.ensureAudio();
     const idx = this.queue.findIndex((t) => t.id === options.track.id);
-    if (idx >= 0) this.currentIndex = idx;
+    if (idx >= 0) {
+      this.queue[idx] = options.track;
+      this.currentIndex = idx;
+    } else {
+      this.queue = [options.track];
+      this.currentIndex = 0;
+    }
+    this.lastKnownDuration = options.track.durationHint ?? 0;
     el.src = options.track.streamUrl;
+    el.load();
     this.notifyListeners("trackChanged", { trackId: options.track.id, index: this.currentIndex });
     this.updateMediaSessionMetadata(options.track);
+    this.updateMediaSessionPositionState();
     if (options.autoplay) await this.play();
   }
 
@@ -183,6 +225,7 @@ export class AudioEngineWeb extends WebPlugin implements DuospaceAudioEnginePlug
       // error rather than silently doing nothing, so the UI can tell the
       // user to tap play again instead of just looking stuck.
       this.notifyListeners("error", { message: e instanceof Error ? e.message : "Playback was blocked", trackId: this.queue[this.currentIndex]?.id ?? null });
+      throw e;
     }
   }
 
@@ -196,13 +239,19 @@ export class AudioEngineWeb extends WebPlugin implements DuospaceAudioEnginePlug
   async stop(): Promise<void> {
     const el = this.audio;
     if (el) { el.pause(); el.currentTime = 0; }
+    if (typeof navigator !== "undefined" && "mediaSession" in navigator) {
+      navigator.mediaSession.playbackState = "none";
+      navigator.mediaSession.metadata = null;
+    }
     this.notifyListeners("playbackStateChanged", { state: "idle" });
   }
 
   async seek(options: SeekOptions): Promise<void> {
     const el = this.ensureAudio();
-    el.currentTime = options.positionSeconds;
-    this.notifyListeners("positionChanged", { positionSeconds: options.positionSeconds, durationSeconds: isFinite(el.duration) ? el.duration : 0 });
+    const duration = isFinite(el.duration) ? el.duration : Number.POSITIVE_INFINITY;
+    el.currentTime = Math.max(0, Math.min(options.positionSeconds, duration));
+    this.updateMediaSessionPositionState();
+    this.notifyListeners("positionChanged", { positionSeconds: el.currentTime, durationSeconds: isFinite(el.duration) ? el.duration : 0 });
   }
 
   async next(): Promise<void> {
@@ -220,8 +269,12 @@ export class AudioEngineWeb extends WebPlugin implements DuospaceAudioEnginePlug
   }
 
   async setQueue(options: SetQueueOptions): Promise<void> {
+    const currentId = this.queue[this.currentIndex]?.id;
     this.queue = options.tracks;
-    this.currentIndex = options.startIndex ?? (this.queue.length > 0 ? 0 : -1);
+    const currentIndex = currentId ? this.queue.findIndex((track) => track.id === currentId) : -1;
+    this.currentIndex = currentIndex >= 0
+      ? currentIndex
+      : options.startIndex ?? (this.queue.length > 0 ? 0 : -1);
   }
 
   async getState(): Promise<AudioEngineState> {

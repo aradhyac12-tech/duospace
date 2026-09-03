@@ -282,6 +282,17 @@ export const GroicProvider = ({ children }: { children: ReactNode }) => {
       setPosition(positionSeconds);
       if (durationSeconds) setDuration(durationSeconds);
     }));
+    subs.push(nativeEngine.onDurationChanged(({ durationSeconds }) => {
+      if (currentRef.current && !isNativelyStreamable(currentRef.current)) return;
+      if (durationSeconds) {
+        nativeDurationRef.current = durationSeconds;
+        setDuration(durationSeconds);
+      }
+    }));
+    subs.push(nativeEngine.onBufferingChanged(({ buffering: isBuffering }) => {
+      if (currentRef.current && !isNativelyStreamable(currentRef.current)) return;
+      setBuffering(isBuffering);
+    }));
     subs.push(nativeEngine.onPlaybackEnded(() => {
       if (currentRef.current && !isNativelyStreamable(currentRef.current)) return;
       advanceNextRef.current();
@@ -725,7 +736,7 @@ export const GroicProvider = ({ children }: { children: ReactNode }) => {
       // starts, exactly like playTrack now does for the local case.
       if (cur && isNativelyStreamable(cur) !== isNativelyStreamable(track)) {
         if (isNativelyStreamable(cur)) {
-          nativeEngine.stop().catch(() => {});
+          await nativeEngine.stop().catch(() => {});
         } else {
           try { playerRef.current?.stopVideo?.(); } catch { /* player not ready */ }
         }
@@ -771,6 +782,12 @@ export const GroicProvider = ({ children }: { children: ReactNode }) => {
       if (trackIdChanged) {
         const track = await resolveGuestTrack();
         if (!track) return;
+        if (cur && isNativelyStreamable(cur) !== isNativelyStreamable(track)) {
+          if (isNativelyStreamable(cur)) await nativeEngine.stop().catch(() => {});
+          else {
+            try { playerRef.current?.stopVideo?.(); } catch { /* player not ready */ }
+          }
+        }
         setCurrent(track);
         if (track.provider === "audius") { try { await nativeEngine.load(track, true); } catch { return; } }
         else { loadVideo(track.videoId, true); }

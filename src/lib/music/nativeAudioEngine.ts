@@ -18,6 +18,7 @@ import type {
   ErrorEvent as AudioEngineErrorEvent, AudioInterruptionEvent,
 } from "duospace-audio-engine";
 import { GroicTrack } from "./types";
+import { logWarn } from "@/lib/telemetry";
 
 export type {
   AudioEngineState, AudioEnginePlaybackState,
@@ -36,18 +37,18 @@ export const trackToEngineTrack = (t: GroicTrack): AudioEngineTrack => ({
 
 export const nativeEngine = {
   load: (track: GroicTrack, autoplay: boolean) =>
-    DuospaceAudioEngine.load({ track: trackToEngineTrack(track), autoplay }),
-  play: () => DuospaceAudioEngine.play(),
-  pause: () => DuospaceAudioEngine.pause(),
-  resume: () => DuospaceAudioEngine.resume(),
-  stop: () => DuospaceAudioEngine.stop(),
-  seek: (positionSeconds: number) => DuospaceAudioEngine.seek({ positionSeconds }),
-  next: () => DuospaceAudioEngine.next(),
-  previous: () => DuospaceAudioEngine.previous(),
+    engineCall("load", () => DuospaceAudioEngine.load({ track: trackToEngineTrack(track), autoplay })),
+  play: () => engineCall("play", () => DuospaceAudioEngine.play()),
+  pause: () => engineCall("pause", () => DuospaceAudioEngine.pause()),
+  resume: () => engineCall("resume", () => DuospaceAudioEngine.resume()),
+  stop: () => engineCall("stop", () => DuospaceAudioEngine.stop()),
+  seek: (positionSeconds: number) => engineCall("seek", () => DuospaceAudioEngine.seek({ positionSeconds })),
+  next: () => engineCall("next", () => DuospaceAudioEngine.next()),
+  previous: () => engineCall("previous", () => DuospaceAudioEngine.previous()),
   setQueue: (tracks: GroicTrack[], startIndex = 0) =>
-    DuospaceAudioEngine.setQueue({ tracks: tracks.map(trackToEngineTrack), startIndex }),
+    engineCall("setQueue", () => DuospaceAudioEngine.setQueue({ tracks: tracks.map(trackToEngineTrack), startIndex })),
   getState: () => DuospaceAudioEngine.getState(),
-  setVolume: (volume: number) => DuospaceAudioEngine.setVolume({ volume }),
+  setVolume: (volume: number) => engineCall("setVolume", () => DuospaceAudioEngine.setVolume({ volume })),
 
   onPlaybackStateChanged: (cb: (e: PlaybackStateChangedEvent) => void) =>
     DuospaceAudioEngine.addListener("playbackStateChanged", cb),
@@ -55,6 +56,10 @@ export const nativeEngine = {
     DuospaceAudioEngine.addListener("trackChanged", cb),
   onPositionChanged: (cb: (e: PositionChangedEvent) => void) =>
     DuospaceAudioEngine.addListener("positionChanged", cb),
+  onDurationChanged: (cb: (e: { durationSeconds: number }) => void) =>
+    DuospaceAudioEngine.addListener("durationChanged", cb),
+  onBufferingChanged: (cb: (e: { buffering: boolean }) => void) =>
+    DuospaceAudioEngine.addListener("bufferingChanged", cb),
   onPlaybackEnded: (cb: () => void) =>
     DuospaceAudioEngine.addListener("playbackEnded", cb),
   onError: (cb: (e: AudioEngineErrorEvent) => void) =>
@@ -64,3 +69,10 @@ export const nativeEngine = {
   onHeadsetDisconnected: (cb: () => void) =>
     DuospaceAudioEngine.addListener("headsetDisconnected", cb),
 };
+
+function engineCall<T>(operation: string, action: () => Promise<T>): Promise<T> {
+  return action().catch((error: unknown) => {
+    logWarn("music.engine", `${operation} failed`);
+    throw error;
+  });
+}

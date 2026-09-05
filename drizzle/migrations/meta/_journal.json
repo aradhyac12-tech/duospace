@@ -1,5 +1,13 @@
 {
   "version": "7",
   "dialect": "postgresql",
-  "entries": []
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1788615625186,
+      "tag": "0000_provision_auth_profiles",
+      "breakpoints": true
+    }
+  ]
 }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/integrations/supabase/appClient";
 import type { CallOutcome } from "@/lib/callUiState";
 
 interface UseCallOutcomeArgs {

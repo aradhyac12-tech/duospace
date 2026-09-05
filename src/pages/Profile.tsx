@@ -3,7 +3,7 @@ import { motion } from "framer-motion";
 import { ChevronRight, Settings as SettingsIcon, Heart, Link2, ShieldCheck, ShieldAlert, Loader2 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/integrations/supabase/appClient";
 import { useAuth } from "@/hooks/useAuth";
 import { useTheme } from "@/contexts/ThemeContext";
 

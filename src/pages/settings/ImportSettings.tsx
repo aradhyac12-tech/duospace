@@ -70,7 +70,7 @@ const runWhatsAppImport = async (
     }
   }
 
-  const { supabase } = await import("@/integrations/supabase/client");
+  const { supabase } = await import("@/integrations/supabase/appClient");
   const batchId = crypto.randomUUID();
 
   // ─── Resolve media against the zip first (if one was provided) ──────────
@@ -192,7 +192,7 @@ const ImportSettings = () => {
   useEffect(() => {
     if (!user) return;
     (async () => {
-      const { supabase } = await import("@/integrations/supabase/client");
+      const { supabase } = await import("@/integrations/supabase/appClient");
       const { data } = await supabase
         .from("imported_chats" as any)
         .select("import_batch_id")
@@ -214,7 +214,7 @@ const ImportSettings = () => {
   const handleUndo = useCallback(async () => {
     if (!user || !lastBatch) return;
     setUndoing(true);
-    const { supabase } = await import("@/integrations/supabase/client");
+    const { supabase } = await import("@/integrations/supabase/appClient");
     // RLS's existing "Delete own imported chats" policy (auth.uid() =
     // owner_id) already scopes this correctly — import_batch_id is just an
     // extra filter on top of that same ownership check.

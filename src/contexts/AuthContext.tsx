@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, useRef, ReactNode } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/integrations/supabase/appClient";
 import type { User } from "@supabase/supabase-js";
 import { logError, logInfo, logWarn } from "@/lib/telemetry";
 import { notifyCurrentDeviceSignIn } from "@/lib/signinAlert";

@@ -659,7 +659,7 @@ export const useDailyCall = (): UseDailyCallReturn => {
   const cycleCamera = useCallback(async () => {
     if (!callRef.current) return;
     try {
-      const result = await callRef.current.cycleCamera();
+      const result = await callRef.current.cycleCamera() as { facingMode?: "user" | "environment" };
       if (result?.facingMode) setFacingMode(result.facingMode as "user" | "environment");
       // Same re-attach requirement as toggleVideo's effect above — belt
       // and suspenders in case this particular device doesn't fire a

@@ -5,7 +5,7 @@ import {
   Shuffle, Repeat, Repeat1, Users, ExternalLink, X, Check, Loader2, GripVertical,
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/integrations/supabase/appClient";
 import { invokeEdgeFunction } from "@/lib/edgeFunction";
 import { useAuth } from "@/hooks/useAuth";
 import { Input } from "@/components/ui/input";
@@ -566,6 +566,9 @@ const Playlist = () => {
       thumbnail_url: item.thumbnail,
       added_by: "auto",
       created_at: new Date().toISOString(),
+      position: Date.now(),
+      updated_at: new Date().toISOString(),
+      updated_by: null,
     };
     setQueue((prev) => [...prev, autoSong]);
     setUpNext((prev) => prev.filter((r) => r.videoId !== item.videoId));

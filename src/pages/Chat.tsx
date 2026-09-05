@@ -22,7 +22,7 @@ import { useTheme } from "@/contexts/ThemeContext";
 import { useDockCompactReporter } from "@/hooks/useDockCompact";
 import { useComposerHost, useBottomSurfaceHeight } from "@/contexts/BottomSurfaceContext";
 import { resolveWallpaperStyle } from "@/lib/wallpapers";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/integrations/supabase/appClient";
 import { playCallSound } from "@/lib/sounds";
 import { hapticLight, hapticMedium, hapticError, hapticMessageSent } from "@/lib/haptics";
 import { useMediaPermission } from "@/components/PermissionDeniedSheet";
@@ -1304,8 +1304,8 @@ const Chat = () => {
     // progress past "Connecting…". withTimeout bounds it to 8s; this
     // check is advisory only, so timing out is treated the same as any
     // other failure.
-    const busyCheckPromise = withTimeout(
-      supabase.rpc("is_partner_on_call" as never, { p_partner_id: partnerId } as never),
+    const busyCheckPromise: Promise<{ data: boolean | null }> = withTimeout(
+      supabase.rpc("is_partner_on_call" as never, { p_partner_id: partnerId } as never) as PromiseLike<{ data: boolean | null }>,
       8_000, "Partner busy check",
     ).catch(() => ({ data: null as boolean | null }));
     const roomPromise = invokeEdgeFunction<{ name: string; url: string; token: string }>("daily-call",

@@ -15,7 +15,7 @@ import Auth from "@/pages/Auth";
 import ResetPassword from "@/pages/ResetPassword";
 import Onboarding from "@/pages/Onboarding";
 import { useState, useEffect, lazy, Suspense } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/integrations/supabase/appClient";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { useLaunchPermissions } from "@/hooks/useLaunchPermissions";
 import AppBootScreen from "@/components/AppBootScreen";

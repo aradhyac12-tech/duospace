@@ -5,7 +5,7 @@
  */
 import { useEffect, useState } from "react";
 import { Monitor, Smartphone, Trash2, Loader2 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/integrations/supabase/appClient";
 import { useToast } from "@/hooks/use-toast";
 
 interface Device {

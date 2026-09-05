@@ -1,6 +1,6 @@
 // Thin client wrappers around @simplewebauthn/browser + our edge functions.
 import { startRegistration, startAuthentication } from "@simplewebauthn/browser";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/integrations/supabase/appClient";
 import { invokeEdgeFunction, EdgeFunctionError } from "@/lib/edgeFunction";
 
 function messageOf(err: unknown, fallback: string): string {

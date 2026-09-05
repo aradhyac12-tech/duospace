@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback } from "react";
 import { Capacitor } from "@capacitor/core";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/integrations/supabase/appClient";
 import { logWarn } from "@/lib/telemetry";
 import type { DeviceStatus, RingerMode } from "duospace-device-status";
 

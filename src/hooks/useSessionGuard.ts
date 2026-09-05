@@ -19,7 +19,7 @@
  */
 
 import { useEffect, useRef } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/integrations/supabase/appClient";
 import { logError, logWarn, logInfo } from "@/lib/telemetry";
 
 export interface SessionGuardOptions {

@@ -2,7 +2,7 @@ import PageHeader from "@/components/PageHeader";
 import { motion, AnimatePresence } from "framer-motion";
 import { Phone, Video, Wifi, PhoneOff } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/integrations/supabase/appClient";
 import { useAuth } from "@/hooks/useAuth";
 import { useCall } from "@/contexts/CallContext";
 import { useToast } from "@/hooks/use-toast";
@@ -395,9 +395,9 @@ const Calls = () => {
     // past "Connecting…". withTimeout bounds it to 8s; either way this
     // check is advisory only, so timing out is treated the same as any
     // other failure (proceed as if busy status is unknown).
-    const busyCheckPromise = partnerId
+    const busyCheckPromise: Promise<{ data: boolean | null }> = partnerId
       ? withTimeout(
-          supabase.rpc("is_partner_on_call" as never, { p_partner_id: partnerId } as never),
+          supabase.rpc("is_partner_on_call" as never, { p_partner_id: partnerId } as never) as PromiseLike<{ data: boolean | null }>,
           8_000, "Partner busy check",
         ).catch(() => ({ data: null as boolean | null }))
       : Promise.resolve({ data: null as boolean | null });

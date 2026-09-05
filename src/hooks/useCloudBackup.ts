@@ -8,7 +8,7 @@
  */
 import { useState, useCallback, useEffect, useRef } from "react";
 import { Capacitor } from "@capacitor/core";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/integrations/supabase/appClient";
 import { useAuth } from "./useAuth";
 import storage from "@/lib/storage";
 

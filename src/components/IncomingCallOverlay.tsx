@@ -1,7 +1,7 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { Phone, PhoneOff, Video } from "lucide-react";
 import { useEffect, useState, useCallback } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/integrations/supabase/appClient";
 import { useAuth } from "@/hooks/useAuth";
 import { startRingtoneLoop, stopRingtoneLoop } from "@/lib/sounds";
 import { startCallVibration, stopCallVibration } from "@/lib/haptics";

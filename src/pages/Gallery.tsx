@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Plus, ImageIcon, Lock, Unlock, Eye, EyeOff, Trash2, Camera, Play, Download, Share2, X, RotateCcw, CheckCircle2, XCircle, Loader2, ChevronLeft, ChevronRight, LayoutGrid, Grid3x3, CheckSquare, Square, Heart, SlidersHorizontal } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useState, useEffect, useRef, useCallback, useMemo, memo } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/integrations/supabase/appClient";
 import { resolveSignedUrl, resolveSignedUrls } from "@/lib/signedStorageUrl";
 import { resumableUpload } from "@/lib/resumableUpload";
 import { useAuth } from "@/hooks/useAuth";

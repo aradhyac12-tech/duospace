@@ -3,7 +3,7 @@ import { motion, AnimatePresence, useMotionValue, animate as animateValue } from
 import { Maximize2, PhoneOff } from "lucide-react";
 import { useCall } from "@/contexts/CallContext";
 import { useAuth } from "@/hooks/useAuth";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/integrations/supabase/appClient";
 import { hapticLight, hapticHeavy } from "@/lib/haptics";
 import { resumeCameraConsumers } from "@/lib/cameraBus";
 

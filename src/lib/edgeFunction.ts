@@ -1,4 +1,4 @@
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/integrations/supabase/appClient";
 import { logInfo, logWarn, newTraceId } from "@/lib/telemetry";
 import { errorManager } from "@/lib/errors/errorManager";
 
@@ -160,12 +160,13 @@ export async function invokeEdgeFunction<T = unknown>(
 
     try {
       const { data, error } = await Promise.race([
-        supabase.functions.invoke<T>(name, { body, headers }),
+        supabase.functions.invoke(name, { body, headers }) as PromiseLike<{ data: T | null; error: unknown | null }>,
         timeoutPromise,
       ]);
       const ms = Math.round(performance.now() - startedAt);
 
       if (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
         const { message: detail, debug, body } = await parseFunctionErrorBody(error);
         const status = getErrorStatus(error);
 
@@ -180,7 +181,7 @@ export async function invokeEdgeFunction<T = unknown>(
         }
 
         logWarn("edgefn", `${name} returned an error`, { requestId, attemptNum, status, detail }, requestId);
-        if (status === 404 || /not found|requested function was not found/i.test(detail ?? error.message ?? "")) {
+        if (status === 404 || /not found|requested function was not found/i.test(detail ?? errorMessage)) {
           errorManager.capture("DS-API-011", { component: "edgeFunction", action: name, cause: error, details: { requestId, status } });
           throw new EdgeFunctionError(
             `The "${name}" server function is not deployed in this Supabase project yet. Deploy it to project jzlpelxwzjjpddqcrtpu and try again.`,
@@ -192,7 +193,7 @@ export async function invokeEdgeFunction<T = unknown>(
         errorManager.capture("DS-API-001", { component: "edgeFunction", action: name, cause: error, details: { requestId, status, detail } });
         // supabase-js's own message for any non-2xx is the unhelpful
         // "Edge Function returned a non-2xx status code" — never show it.
-        const generic = /non-2xx status code/i.test(error.message ?? "");
+        const generic = /non-2xx status code/i.test(errorMessage);
         const fallback =
           status === 401 || status === 403
             ? "Your session expired. Sign in again and retry."
@@ -204,7 +205,7 @@ export async function invokeEdgeFunction<T = unknown>(
                   ? "The server hit an error handling this request. Please try again."
                   : "The server rejected the request.";
         throw new EdgeFunctionError(
-          detail || (generic ? fallback : error.message) || fallback,
+          detail || (generic ? fallback : errorMessage) || fallback,
           "http",
           requestId,
           status,

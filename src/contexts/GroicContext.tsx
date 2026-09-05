@@ -49,7 +49,7 @@ import {
   createContext, useContext, useEffect, useRef, useState, useCallback,
   ReactNode, useMemo,
 } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/integrations/supabase/appClient";
 import { useAuth } from "@/hooks/useAuth";
 import { useCall } from "@/contexts/CallContext";
 import { loadYouTubeAPI, extractYouTubeId } from "@/lib/youtubeApi";

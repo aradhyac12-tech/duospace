@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, X, ImageIcon, Trash2 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/integrations/supabase/appClient";
 import { resolveSignedUrl, resolveSignedUrls } from "@/lib/signedStorageUrl";
 import { useAuth } from "@/hooks/useAuth";
 import { Input } from "@/components/ui/input";

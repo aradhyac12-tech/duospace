@@ -26,7 +26,7 @@
 import { useEffect, useRef } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useTheme } from "@/contexts/ThemeContext";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/integrations/supabase/appClient";
 import storage from "@/lib/storage";
 // NOTE: supabase is still used for mood_logs inserts (the actual mood
 // reading is stored server-side for the mood history UI), but calibration

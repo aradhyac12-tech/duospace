@@ -8,7 +8,7 @@ import { bootFontPreset } from "@/lib/fontLoader";
 import { bootTextDensity } from "@/lib/textDensity";
 import { errorManager } from "@/lib/errors/errorManager";
 import { registerAppRecoveries } from "@/lib/errors/registerAppRecoveries";
-import { isSupabaseConfigured } from "@/integrations/supabase/client";
+import { isSupabaseConfigured } from "@/integrations/supabase/appClient";
 
 // BLANK-SCREEN FIX (see src/integrations/supabase/client.ts for the full
 // root-cause writeup): with no Supabase env vars set, the app used to just

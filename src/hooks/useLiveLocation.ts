@@ -42,7 +42,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Capacitor } from "@capacitor/core";
 import { Geolocation, type PositionOptions as CapPositionOptions } from "@capacitor/geolocation";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/integrations/supabase/appClient";
 import { logInfo, logWarn, logError, newTraceId } from "@/lib/telemetry";
 import {
   enqueueLocation,

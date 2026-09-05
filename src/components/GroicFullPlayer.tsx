@@ -673,7 +673,6 @@ const GroicFullPlayer = () => {
                 </AnimatePresence>
               </div>
             )}
-          </div>
           </motion.div>
         </motion.div>
       )}

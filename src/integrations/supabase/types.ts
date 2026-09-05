@@ -14,7 +14,96 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      profiles: {
+        Row: {
+          app_visibility: string | null
+          avatar_url: string | null
+          battery_charging: boolean | null
+          battery_level: number | null
+          couple_theme: string | null
+          created_at: string
+          device_platform: string | null
+          device_status_updated_at: string | null
+          display_name: string
+          gallery_shared: boolean
+          gender: string | null
+          id: string
+          last_seen_at: string | null
+          mood_emoji: string | null
+          mood_text: string | null
+          mood_updated_at: string | null
+          partner_id: string | null
+          pet_name: string | null
+          phone_number: string | null
+          public_key: string | null
+          push_platform: string | null
+          push_token: string | null
+          ringer_mode: string | null
+          tracking_state: string | null
+          updated_at: string
+          user_id: string
+          username: string | null
+        }
+        Insert: {
+          app_visibility?: string | null
+          avatar_url?: string | null
+          battery_charging?: boolean | null
+          battery_level?: number | null
+          couple_theme?: string | null
+          created_at?: string
+          device_platform?: string | null
+          device_status_updated_at?: string | null
+          display_name?: string
+          gallery_shared?: boolean
+          gender?: string | null
+          id?: string
+          last_seen_at?: string | null
+          mood_emoji?: string | null
+          mood_text?: string | null
+          mood_updated_at?: string | null
+          partner_id?: string | null
+          pet_name?: string | null
+          phone_number?: string | null
+          public_key?: string | null
+          push_platform?: string | null
+          push_token?: string | null
+          ringer_mode?: string | null
+          tracking_state?: string | null
+          updated_at?: string
+          user_id: string
+          username?: string | null
+        }
+        Update: {
+          app_visibility?: string | null
+          avatar_url?: string | null
+          battery_charging?: boolean | null
+          battery_level?: number | null
+          couple_theme?: string | null
+          created_at?: string
+          device_platform?: string | null
+          device_status_updated_at?: string | null
+          display_name?: string
+          gallery_shared?: boolean
+          gender?: string | null
+          id?: string
+          last_seen_at?: string | null
+          mood_emoji?: string | null
+          mood_text?: string | null
+          mood_updated_at?: string | null
+          partner_id?: string | null
+          pet_name?: string | null
+          phone_number?: string | null
+          public_key?: string | null
+          push_platform?: string | null
+          push_token?: string | null
+          ringer_mode?: string | null
+          tracking_state?: string | null
+          updated_at?: string
+          user_id?: string
+          username?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

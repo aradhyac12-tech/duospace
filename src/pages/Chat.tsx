@@ -1305,7 +1305,7 @@ const Chat = () => {
     // check is advisory only, so timing out is treated the same as any
     // other failure.
     const busyCheckPromise: Promise<{ data: boolean | null }> = withTimeout(
-      supabase.rpc("is_partner_on_call" as never, { p_partner_id: partnerId } as never),
+      supabase.rpc("is_partner_on_call" as never, { p_partner_id: partnerId } as never) as PromiseLike<{ data: boolean | null }>,
       8_000, "Partner busy check",
     ).catch(() => ({ data: null as boolean | null }));
     const roomPromise = invokeEdgeFunction<{ name: string; url: string; token: string }>("daily-call",

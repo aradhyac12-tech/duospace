@@ -4,7 +4,7 @@ import { PushNotifications, Token, PushNotificationSchema, ActionPerformed } fro
 import { DuospaceCallKitBridge } from "duospace-callkit-bridge";
 import { DuospaceBackgroundGeolocation } from "duospace-background-geolocation";
 import { useAuth } from "./useAuth";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/integrations/supabase/appClient";
 import { useToast } from "./use-toast";
 import { getDeviceId } from "@/lib/deviceId";
 

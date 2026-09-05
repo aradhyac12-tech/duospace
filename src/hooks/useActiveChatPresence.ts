@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { Capacitor } from "@capacitor/core";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/integrations/supabase/appClient";
 import { useAuth } from "./useAuth";
 
 const HEARTBEAT_MS = 15_000;

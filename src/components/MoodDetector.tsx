@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Camera, X, ThumbsUp, ThumbsDown, CameraOff, Settings2, RefreshCw, CheckCircle2 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/integrations/supabase/appClient";
 import { useAuth } from "@/hooks/useAuth";
 import storage from "@/lib/storage";
 import { hapticLight, hapticWarning, hapticSuccess } from "@/lib/haptics";

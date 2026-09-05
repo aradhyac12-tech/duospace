@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/integrations/supabase/appClient";
 import { resolveSignedUrl } from "@/lib/signedStorageUrl";
 import { dispatchEmojiEffect } from "@/components/EmojiScreenEffect";
 import { playMessageSound } from "@/lib/sounds";

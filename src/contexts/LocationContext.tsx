@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, useRef, useMemo, ReactNode } from "react";
 import { Capacitor } from "@capacitor/core";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/integrations/supabase/appClient";
 import { useAuth } from "@/hooks/useAuth";
 import { useLiveLocation, type LiveLocationData, type LiveLocationState, type LiveDebug } from "@/hooks/useLiveLocation";
 import { usePublishDeviceStatus } from "@/hooks/useDeviceStatus";

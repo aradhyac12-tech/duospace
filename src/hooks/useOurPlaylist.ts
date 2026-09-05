@@ -21,7 +21,7 @@
  * page you actually use to play music" surface.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/integrations/supabase/appClient";
 import { useAuth } from "@/hooks/useAuth";
 
 export interface OurPlaylistSong {

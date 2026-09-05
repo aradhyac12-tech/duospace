@@ -1,5 +1,5 @@
 import type { Session } from "@supabase/supabase-js";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/integrations/supabase/appClient";
 import { logInfo, logError, newTraceId } from "@/lib/telemetry";
 
 export interface AuthCallbackResult {

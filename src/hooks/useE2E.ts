@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/integrations/supabase/appClient";
 import {
   generateKeyPair, saveKeyPair, loadKeyPair,
   encryptMessage, decryptMessage, isEncrypted,

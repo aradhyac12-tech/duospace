@@ -29,7 +29,7 @@
  * - Chunk retry backoff reduced from 800ms to 400ms base
  * - Post-finalization verify reduced to max 2 attempts for small files
  */
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/integrations/supabase/appClient";
 import { withRetry } from "@/lib/networkState";
 import { logError, logInfo, logWarn } from "@/lib/telemetry";
 import { invokeEdgeFunction, EdgeFunctionError } from "@/lib/edgeFunction";

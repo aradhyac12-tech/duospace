@@ -1,4 +1,4 @@
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/integrations/supabase/appClient";
 import { logInfo, logWarn, newTraceId } from "@/lib/telemetry";
 import { errorManager } from "@/lib/errors/errorManager";
 

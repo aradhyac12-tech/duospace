@@ -15,7 +15,7 @@
  * more cases here — this file only covers the handlers with no natural
  * "owning" module.
  */
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/integrations/supabase/appClient";
 import { logInfo, logWarn } from "@/lib/telemetry";
 import { registerRecovery } from "./recovery";
 

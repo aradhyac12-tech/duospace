@@ -30,7 +30,7 @@
 // about the photo did. This is the one signed-URL resolver every photo
 // surface in the app goes through (Gallery, Chat, PhotoViewer, MemoryWall),
 // so caching here fixes all four at once with no call-site changes.
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/integrations/supabase/appClient";
 
 const DEFAULT_TTL_SECONDS = 60 * 60 * 24 * 6; // 6 days
 const MAX_RETRY_ATTEMPTS = 4;

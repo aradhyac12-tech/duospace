@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { TrendingUp, TrendingDown, Minus, Sun, Sunset, Moon, Cloud as CloudIcon } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, CartesianGrid } from "recharts";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/integrations/supabase/appClient";
 import { useAuth } from "@/hooks/useAuth";
 import { Shimmer } from "@/components/skeletons/Shimmer";
 import { ErrorCard } from "@/components/errors/ErrorCard";

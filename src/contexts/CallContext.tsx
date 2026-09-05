@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useState, useCallback, useRef, us
 import { useDailyCall } from "@/hooks/useDailyCall";
 import IncomingCallOverlay from "@/components/IncomingCallOverlay";
 import MinimizedCallBubble from "@/components/calls/MinimizedCallBubble";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/integrations/supabase/appClient";
 import { useToast } from "@/hooks/use-toast";
 import { invokeEdgeFunction } from "@/lib/edgeFunction";
 import { withTimeout } from "@/lib/withTimeout";

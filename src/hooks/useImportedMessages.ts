@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/integrations/supabase/appClient";
 import { resolveSignedUrl } from "@/lib/signedStorageUrl";
 import type { ImportedMessage } from "@/types/chat";
 

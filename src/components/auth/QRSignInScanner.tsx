@@ -3,7 +3,7 @@ import { Html5Qrcode, Html5QrcodeScannerState } from "html5-qrcode";
 import { Capacitor } from "@capacitor/core";
 import { Camera } from "@capacitor/camera";
 import { Camera as CameraIcon, Loader2 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/integrations/supabase/appClient";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { logInfo, logError, newTraceId } from "@/lib/telemetry";

@@ -22,7 +22,7 @@ import { useTheme } from "@/contexts/ThemeContext";
 import { useDockCompactReporter } from "@/hooks/useDockCompact";
 import { useComposerHost, useBottomSurfaceHeight } from "@/contexts/BottomSurfaceContext";
 import { resolveWallpaperStyle } from "@/lib/wallpapers";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/integrations/supabase/appClient";
 import { playCallSound } from "@/lib/sounds";
 import { hapticLight, hapticMedium, hapticError, hapticMessageSent } from "@/lib/haptics";
 import { useMediaPermission } from "@/components/PermissionDeniedSheet";

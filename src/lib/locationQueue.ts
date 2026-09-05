@@ -13,7 +13,7 @@
  *   • Exponential retry handled by the caller; this module only stores/flushes.
  */
 
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/integrations/supabase/appClient";
 import { logInfo, logWarn, logError } from "@/lib/telemetry";
 
 export interface QueuedLocation {

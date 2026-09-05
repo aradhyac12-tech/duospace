@@ -2,7 +2,7 @@ import PageHeader from "@/components/PageHeader";
 import { motion, AnimatePresence } from "framer-motion";
 import { Phone, Video, Wifi, PhoneOff } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/integrations/supabase/appClient";
 import { useAuth } from "@/hooks/useAuth";
 import { useCall } from "@/contexts/CallContext";
 import { useToast } from "@/hooks/use-toast";

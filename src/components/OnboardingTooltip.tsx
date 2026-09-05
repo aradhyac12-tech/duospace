@@ -1,0 +1,132 @@
+/**
+ * OnboardingTooltip — inline contextual hints for first-time users.
+ *
+ * FIX AUDIT #20: Missing polished onboarding/help flows.
+ * Shows a one-time dismissable tooltip anchored to a feature.
+ * State is persisted in localStorage so hints are only shown once.
+ *
+ * Usage:
+ *   <OnboardingTooltip id="chat-e2e" text="Messages are end-to-end encrypted." />
+ *
+ * dismissWhen (optional) — pass a condition that means "the user already
+ * found this on their own" (e.g. the feature it points at just got
+ * opened). When it flips true, the tooltip dismisses itself the same way
+ * tapping its own close button would — same storage write, so it won't
+ * come back on a later mount either. Without this, a tooltip anchored to
+ * something that opens/closes (like a popover trigger) would need to stay
+ * mounted continuously to avoid re-showing on every remount, since its own
+ * "seen" check only runs once per mount.
+ */
+
+import { useState, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { X } from "lucide-react";
+import storage from "@/lib/storage";
+
+interface OnboardingTooltipProps {
+  /** Unique ID — used as the storage key. Must be stable across sessions. */
+  id: string;
+  /** The hint text to show */
+  text: string;
+  /** Optional emoji to lead with */
+  emoji?: string;
+  /** Which side to show the tip on */
+  side?: "top" | "bottom" | "left" | "right";
+  /** See dismissWhen doc above. */
+  dismissWhen?: boolean;
+}
+
+const STORAGE_PREFIX = "duo-hint-dismissed-";
+
+export function OnboardingTooltip({ id, text, emoji = "💡", side = "bottom", dismissWhen }: OnboardingTooltipProps) {
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const dismissed = storage.get(`${STORAGE_PREFIX}${id}`);
+    if (!dismissed) setVisible(true);
+  }, [id]);
+
+  const dismiss = () => {
+    storage.set(`${STORAGE_PREFIX}${id}`, "1");
+    setVisible(false);
+  };
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (dismissWhen) dismiss(); }, [dismissWhen]);
+
+  const positionClass = {
+    bottom: "top-full mt-2 left-1/2 -translate-x-1/2",
+    top: "bottom-full mb-2 left-1/2 -translate-x-1/2",
+    left: "right-full mr-2 top-1/2 -translate-y-1/2",
+    right: "left-full ml-2 top-1/2 -translate-y-1/2",
+  }[side];
+
+  return (
+    <AnimatePresence>
+      {visible && (
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9, y: side === "top" ? 6 : -6 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.92, y: side === "top" ? 4 : -4, transition: { duration: 0.12 } }}
+          transition={{ type: "spring", stiffness: 420, damping: 24 }}
+          className={`absolute z-50 ${positionClass} w-max max-w-[220px]`}
+        >
+          <div className="bg-primary text-primary-foreground rounded-xl px-3 py-2 shadow-xl flex items-start gap-2">
+            <motion.span
+              initial={{ scale: 0.5, rotate: -15 }}
+              animate={{ scale: 1, rotate: 0 }}
+              transition={{ type: "spring", stiffness: 500, damping: 15, delay: 0.08 }}
+              className="text-sm shrink-0"
+            >
+              {emoji}
+            </motion.span>
+            <p className="text-[11px] leading-relaxed flex-1">{text}</p>
+            <motion.button
+              whileTap={{ scale: 0.85 }}
+              onClick={dismiss}
+              className="shrink-0 mt-0.5 opacity-60 hover:opacity-100 transition-opacity"
+              aria-label="Dismiss tip"
+            >
+              <X className="h-3 w-3" />
+            </motion.button>
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
+// ─── Pre-defined hints for the main DuoSpace flows ────────────────────────────
+
+export const HINTS = {
+  CHAT_E2E: {
+    id: "chat-e2e",
+    text: "Messages are end-to-end encrypted. Only you and your partner can read them.",
+    emoji: "🔒",
+  },
+  CHAT_DISAPPEAR: {
+    id: "chat-disappear",
+    text: "Enable disappearing messages from the ⋮ menu. Messages vanish after your chosen time.",
+    emoji: "⏱️",
+  },
+  CHAT_NUDGE: {
+    id: "chat-nudge",
+    text: "Tap the ❤ to send a nudge — a gentle notification to your partner.",
+    emoji: "❤️",
+  },
+  SETTINGS_PARTNER: {
+    id: "settings-partner",
+    text: "Link a partner in Settings to start chatting. Share your invite code with them.",
+    emoji: "🔗",
+  },
+  BACKUP: {
+    id: "backup-first-time",
+    text: "Back up your chat history to Lovable Cloud in Settings → Backup.",
+    emoji: "☁️",
+  },
+  CALL_VOICE: {
+    id: "call-voice-tip",
+    text: "Voice calls never open your camera. Video calls do — tap the camera icon to toggle.",
+    emoji: "📞",
+  },
+} as const;

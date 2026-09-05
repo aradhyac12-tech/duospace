@@ -1,0 +1,58 @@
+{
+  "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    "isolatedModules": true,
+    "jsx": "react-jsx",
+    "lib": [
+      "ES2020",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "module": "ESNext",
+    "moduleDetection": "force",
+    "moduleResolution": "bundler",
+    "noEmit": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitAny": false,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "strictNullChecks": false,
+    "strictFunctionTypes": false,
+    "useUnknownInCatchVariables": false,
+    "paths": {
+      "@/*": [
+        "./src/*"
+      ],
+      "duospace-audio-route": [
+        "./native-plugins/audio-route/src/index.ts"
+      ],
+      "duospace-device-status": [
+        "./native-plugins/device-status/src/index.ts"
+      ],
+      "duospace-callkit-bridge": [
+        "./native-plugins/callkit-bridge/src/index.ts"
+      ],
+      "duospace-audio-engine": [
+        "./native-plugins/audio-engine/src/index.ts"
+      ],
+      "duospace-background-geolocation": [
+        "./native-plugins/background-geolocation/src/index.ts"
+      ]
+    },
+    "skipLibCheck": true,
+    "strict": true,
+    "target": "ES2020",
+    "types": [
+      "vitest/globals"
+    ],
+    "useDefineForClassFields": true
+  },
+  "include": [
+    "src",
+    "native-plugins/audio-route/src",
+    "native-plugins/device-status/src",
+    "native-plugins/audio-engine/src",
+    "native-plugins/background-geolocation/src",
+    "native-plugins/callkit-bridge/src"
+  ]
+}

@@ -395,7 +395,7 @@ const Calls = () => {
     // past "Connecting…". withTimeout bounds it to 8s; either way this
     // check is advisory only, so timing out is treated the same as any
     // other failure (proceed as if busy status is unknown).
-    const busyCheckPromise = partnerId
+    const busyCheckPromise: Promise<{ data: boolean | null }> = partnerId
       ? withTimeout(
           supabase.rpc("is_partner_on_call" as never, { p_partner_id: partnerId } as never),
           8_000, "Partner busy check",

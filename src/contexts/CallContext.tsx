@@ -262,7 +262,7 @@ export const CallProvider = ({ children }: { children: ReactNode }) => {
         invokeEdgeFunction<{ token: string }>("daily-call",
           { body: { action: "get-token", roomName: roomUrl.split("/").pop() }, timeoutMs: 25_000 }),
       ]);
-      const { data: claimed, error: claimErr } = claimResult;
+      const { data: claimed, error: claimErr } = claimResult as { data: boolean | null; error: unknown | null };
       if (claimErr || claimed !== true) {
         clearTimeout(acceptWatchdog);
         toast({ title: "Call answered elsewhere", description: "This call was already picked up on another device." });

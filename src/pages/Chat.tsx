@@ -1304,7 +1304,7 @@ const Chat = () => {
     // progress past "Connecting…". withTimeout bounds it to 8s; this
     // check is advisory only, so timing out is treated the same as any
     // other failure.
-    const busyCheckPromise = withTimeout(
+    const busyCheckPromise: Promise<{ data: boolean | null }> = withTimeout(
       supabase.rpc("is_partner_on_call" as never, { p_partner_id: partnerId } as never),
       8_000, "Partner busy check",
     ).catch(() => ({ data: null as boolean | null }));

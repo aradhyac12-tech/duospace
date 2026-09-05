@@ -566,6 +566,9 @@ const Playlist = () => {
       thumbnail_url: item.thumbnail,
       added_by: "auto",
       created_at: new Date().toISOString(),
+      position: Date.now(),
+      updated_at: new Date().toISOString(),
+      updated_by: null,
     };
     setQueue((prev) => [...prev, autoSong]);
     setUpNext((prev) => prev.filter((r) => r.videoId !== item.videoId));

@@ -430,7 +430,7 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
     import("@/lib/customThemes").then(({ getActiveCustomThemeId, clearCustomThemeOverride }) => {
       if (getActiveCustomThemeId()) clearCustomThemeOverride();
     });
-    import("@/integrations/supabase/client").then(({ supabase }) => {
+    import("@/integrations/supabase/appClient").then(({ supabase }) => {
       supabase.auth.getUser().then(({ data }) => {
         if (data.user)
           supabase.from("profiles").update({ couple_theme: t } as any).eq("user_id", data.user.id);
@@ -478,7 +478,7 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
     let cancelled = false;
 
     const setup = async () => {
-      const { supabase } = await import("@/integrations/supabase/client");
+      const { supabase } = await import("@/integrations/supabase/appClient");
       const { data } = await supabase.auth.getUser();
       if (cancelled || !data.user) return;
 

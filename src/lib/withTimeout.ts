@@ -23,7 +23,7 @@ export class TimeoutError extends Error {
  * settle in the background and its result is simply ignored — but the
  * caller stops waiting on it.
  */
-export function withTimeout<T>(promise: Promise<T>, ms: number, label = "Operation"): Promise<T> {
+export function withTimeout<T>(promise: PromiseLike<T>, ms: number, label = "Operation"): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => reject(new TimeoutError(label, ms)), ms);
     promise.then(

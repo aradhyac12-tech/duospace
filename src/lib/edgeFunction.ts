@@ -160,7 +160,7 @@ export async function invokeEdgeFunction<T = unknown>(
 
     try {
       const { data, error } = await Promise.race([
-        supabase.functions.invoke<T>(name, { body, headers }),
+        supabase.functions.invoke(name, { body, headers }) as PromiseLike<{ data: T | null; error: unknown | null }>,
         timeoutPromise,
       ]);
       const ms = Math.round(performance.now() - startedAt);

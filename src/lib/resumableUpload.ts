@@ -179,7 +179,7 @@ export async function resumableUpload(opts: ResumableUploadOptions): Promise<Res
     for (let attempt = 0; attempt < 2; attempt++) {
       if (attempt > 0) await new Promise((r) => setTimeout(r, 250));
       const { data: listed } = await supabase.storage.from(bucket).list(chunkDir(objectPath), { search: soleName, limit: 1 });
-      if (listed && listed.length > 0 && ((listed[0] as any).metadata?.size ?? listed[0].size ?? 0) > 0) { landed = true; break; }
+      if (listed && listed.length > 0 && ((listed[0] as any).metadata?.size ?? 0) > 0) { landed = true; break; }
     }
     if (!landed) {
       logWarn("resumable", "chunk 0 not visible immediately after upload — re-uploading before finalize", diagContext);

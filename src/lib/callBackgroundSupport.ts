@@ -79,7 +79,7 @@ export const startCallBackgroundSupport = (opts: { callType: "video" | "voice"; 
         artist: "DuoSpace",
       });
       navigator.mediaSession.playbackState = "playing";
-      navigator.mediaSession.setActionHandler("hangup", opts.onHangup);
+      navigator.mediaSession.setActionHandler("hangup" as MediaSessionAction, opts.onHangup);
       // Some browsers route the generic "pause" control to hang up a call
       // session rather than showing a disabled/no-op button.
       navigator.mediaSession.setActionHandler("pause", opts.onHangup);
@@ -99,7 +99,7 @@ export const stopCallBackgroundSupport = () => {
     try {
       navigator.mediaSession.playbackState = "none";
       navigator.mediaSession.metadata = null;
-      navigator.mediaSession.setActionHandler("hangup", null);
+      navigator.mediaSession.setActionHandler("hangup" as MediaSessionAction, null);
       navigator.mediaSession.setActionHandler("pause", null);
     } catch { /* no-op */ }
   }

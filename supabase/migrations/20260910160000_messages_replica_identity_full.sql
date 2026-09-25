@@ -1,0 +1,53 @@
+-- Spec section 20 — DELETE realtime filtering.
+--
+-- useChatRealtimeMessages.ts's DELETE listener has been unfiltered from
+-- the start, with an explicit code comment explaining why: `messages`'
+-- default REPLICA IDENTITY is the primary key only, so a DELETE's WAL
+-- record (and therefore its Realtime "old" payload) carries ONLY `id` —
+-- there is no sender_id/receiver_id to filter on, unlike INSERT/UPDATE
+-- (whose payload is always the full new row regardless of replica
+-- identity, which is why those two already got the two-listener
+-- sender_id/receiver_id filter — see their own "FIX BUG-02" comments).
+--
+-- IMPACT of the gap: every authenticated client receives every DELETE
+-- event on the entire `messages` table. Since the default-identity
+-- payload only ever contains `id` (a random UUID with no relationship to
+-- who's involved), the actual exposure is narrow — a client learns that
+-- some message with that id was deleted, nothing about who sent/received
+-- it or what it contained — but it's still the same class of
+-- unnecessary-table-wide-broadcast bug already fixed for `messages`
+-- INSERT/UPDATE and for `message_reactions`, and it means every client
+-- runs its filter/removal logic against every delete happening anywhere
+-- in the app, not just their own conversation (event amplification,
+-- spec section 6).
+--
+-- FIX: REPLICA IDENTITY FULL makes every UPDATE/DELETE WAL record (and
+-- therefore Realtime payload) carry the complete OLD row, which is what
+-- lets a DELETE listener filter on sender_id/receiver_id the same way
+-- INSERT/UPDATE already do.
+--
+-- Trade-off, evaluated rather than assumed (per spec section 20's own
+-- instruction not to apply this blindly): FULL replica identity means
+-- Postgres logs the whole old row (not just the primary key) on every
+-- UPDATE and DELETE to this table, which increases WAL volume for those
+-- two operations specifically. For `messages`: DELETEs are rare
+-- (explicit user action — "delete for me"/"delete for everyone" style
+-- flows), and UPDATEs, while more frequent (read receipts, edits, pins),
+-- are already logging the full new row for the same purpose the
+-- INSERT/UPDATE listeners rely on today (Postgres already always
+-- includes the full NEW row in logical replication regardless of
+-- replica identity — this migration only adds the OLD row for
+-- UPDATE/DELETE). The added volume is bounded by this table's per-row
+-- size (small: text/uuid/timestamp columns, no large blobs — media lives
+-- in Storage, not in this table) and by actual write frequency, which
+-- for a two-person conversation table is low relative to typical
+-- high-throughput tables where FULL is a real concern. On that basis
+-- this is judged an acceptable trade for closing the filtering gap;
+-- if usage patterns change (e.g. bulk-delete/vanish-mode sweeps
+-- affecting many rows at once — see 20260824121500_vanish_mode_sentinel_
+-- safe_for_sweep.sql and 20260910120000_expire_stale_calls_sweep.sql for
+-- prior art on bulk operations against related tables), this should be
+-- re-measured against real WAL/replication metrics rather than assumed
+-- to still hold.
+
+ALTER TABLE public.messages REPLICA IDENTITY FULL;

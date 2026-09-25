@@ -1,0 +1,180 @@
+--- duospace-orig/src/hooks/useDailyCall.ts	2026-09-12 05:05:07.000000000 +0000
++++ duospace/src/hooks/useDailyCall.ts	2026-09-12 06:29:04.102601710 +0000
+@@ -114,6 +114,13 @@
+    * pass — exposed for a future indicator/telemetry consumer.
+    */
+   detailedNetworkQuality: QualityTier;
++  /** Resolves `true` once remote audio is actually playable for the
++   *  current call attempt, or `false` if `timeoutMs` elapses first. Call
++   *  sites should await this after `joinCall()` resolves before declaring
++   *  the call CONNECTED / finishing the latency trace — joinCall() itself
++   *  only means LOCAL_JOINED (see the CONNECTION-SEMANTICS FIX comment
++   *  above `remoteAudioReadyRef`). */
++  waitForRemoteAudioReady: (timeoutMs: number) => Promise<boolean>;
+ }
+ 
+ export const useDailyCall = (): UseDailyCallReturn => {
+@@ -133,6 +140,43 @@
+   // and CallStage's mirroring transform).
+   const [facingMode, setFacingMode] = useState<"user" | "environment" | undefined>(undefined);
+ 
++  // CONNECTION-SEMANTICS FIX (call-connect audit, item 3): callers used to
++  // treat joinCall()'s own resolution — which fires the instant OUR OWN
++  // call.join() resolves, i.e. LOCAL_JOINED — as "the call is connected"
++  // for both the call-state machine's CONNECTED transition and the
++  // call-latency trace's `connected` mark/totalSetupLatencyMs. Neither of
++  // those things is true yet at that point: no remote participant may
++  // even be in the room, let alone have usable audio. This ref/queue pair
++  // lets a caller `await waitForRemoteAudioReady()` for the real moment —
++  // remote audio actually becomes playable — without changing joinCall()
++  // itself (other logic, e.g. the camera-picker enumeration gated on
++  // callState==="joined", legitimately still wants "local join done").
++  const remoteAudioReadyRef = useRef(false);
++  const remoteAudioWaitersRef = useRef<Array<() => void>>([]);
++  const notifyRemoteAudioReady = useCallback(() => {
++    if (remoteAudioReadyRef.current) return; // already fired for this call
++    remoteAudioReadyRef.current = true;
++    const waiters = remoteAudioWaitersRef.current;
++    remoteAudioWaitersRef.current = [];
++    waiters.forEach((w) => w());
++  }, []);
++  /** Resolves `true` once remote audio is actually playable, or `false`
++   *  if `timeoutMs` elapses first (a bounded fallback — some edge case
++   *  where Daily never reports a clean "playable" transition must not
++   *  strand the caller/telemetry waiting forever; the call itself is
++   *  unaffected either way, this only gates when CONNECTED is declared). */
++  const waitForRemoteAudioReady = useCallback((timeoutMs: number): Promise<boolean> => {
++    if (remoteAudioReadyRef.current) return Promise.resolve(true);
++    return new Promise<boolean>((resolve) => {
++      const timer = setTimeout(() => {
++        remoteAudioWaitersRef.current = remoteAudioWaitersRef.current.filter((w) => w !== onReady);
++        resolve(false);
++      }, timeoutMs);
++      const onReady = () => { clearTimeout(timer); resolve(true); };
++      remoteAudioWaitersRef.current.push(onReady);
++    });
++  }, []);
++
+   const callRef        = useRef<DailyCall | null>(null);
+   const localVideoRef  = useRef<HTMLVideoElement>(null!);
+   const remoteVideoRef = useRef<HTMLVideoElement>(null!);
+@@ -332,6 +376,11 @@
+     }
+     joinInProgressRef.current = true;
+     const attemptId = ++joinAttemptIdRef.current;
++    // Fresh call attempt — a previous attempt's remote-audio-ready state
++    // (or stale waiters, in the unlikely case a caller never awaited its
++    // own wait) must not leak into this one.
++    remoteAudioReadyRef.current = false;
++    remoteAudioWaitersRef.current = [];
+     try {
+       setCallState("joining");
+       setError(null);
+@@ -435,7 +484,7 @@
+           attachTrack(evt.participant, remoteVideoRef);
+           attachAudioTrack(evt.participant);
+           if (evt.participant.tracks?.video?.state === "playable") markCallLatency("first_remote_video");
+-          if (evt.participant.tracks?.audio?.state === "playable") markCallLatency("first_remote_audio");
++          if (evt.participant.tracks?.audio?.state === "playable") { markCallLatency("first_remote_audio"); notifyRemoteAudioReady(); }
+         }
+         const count = Object.keys(call.participants()).length;
+         setParticipantCount(count);
+@@ -478,6 +527,7 @@
+           else { markCallLatency("first_remote_video"); attachTrack(evt.participant, remoteVideoRef); }
+         } else if (evt.track.kind === "audio" && !evt.participant.local) {
+           markCallLatency("first_remote_audio");
++          notifyRemoteAudioReady();
+           attachAudioTrack(evt.participant);
+         }
+       });
+@@ -852,5 +902,6 @@
+     networkQuality, participantCount, error, callError: callErrorState, callDuration,
+     detailedNetworkQuality,
+     autoAudioFallback,
++    waitForRemoteAudioReady,
+   };
+ };
+--- duospace-orig/src/contexts/CallContext.tsx	2026-09-12 05:05:07.000000000 +0000
++++ duospace/src/contexts/CallContext.tsx	2026-09-12 06:29:13.579384395 +0000
+@@ -453,7 +453,24 @@
+         } as never).eq("id", callId).eq("status", "in_progress").then(() => {}).catch(() => {});
+         return;
+       }
+-      dispatchCall({ type: "CONNECTED", source: "joinCall-resolved" });
++      // CONNECTION-SEMANTICS FIX (call-connect audit, item 3): joinCall()
++      // resolving only means WE joined the Daily room (LOCAL_JOINED) — it
++      // says nothing about whether the caller is even in the room yet,
++      // let alone whether their audio is usable. Wait for the real
++      // moment (bounded, so a rare missed "playable" transition can't
++      // strand the accept flow) before declaring CONNECTED / finalizing
++      // the latency trace, so both the state machine and the metrics
++      // reflect what the person actually experiences as "connected".
++      const remoteAudioReady = await call.waitForRemoteAudioReady(8000);
++      if (acceptCancelledRef.current || !isCurrentGeneration(machineRef.current, attemptGeneration)) {
++        call.leaveCall();
++        dispatchCall({ type: "CANCELLED", source: "cancelled-during-join" });
++        await supabase.from("call_history").update({
++          status: "completed", ended_at: new Date().toISOString(),
++        } as never).eq("id", callId).eq("status", "in_progress").then(() => {}).catch(() => {});
++        return;
++      }
++      dispatchCall({ type: "CONNECTED", source: remoteAudioReady ? "remote-audio-ready" : "remote-audio-timeout" });
+       setActiveCallId(callId);
+       setActiveCallType(callType === "voice" ? "voice" : "video");
+       toast({ title: "Call connected 📞" });
+--- duospace-orig/src/pages/Calls.tsx	2026-09-12 05:05:07.000000000 +0000
++++ duospace/src/pages/Calls.tsx	2026-09-12 06:29:33.262986790 +0000
+@@ -140,7 +140,7 @@
+   const [ringHint, setRingHint] = useState<string | null>(null);
+ 
+   const {
+-    joinCall, leaveCall, callState,
++    joinCall, leaveCall, callState, waitForRemoteAudioReady,
+     networkQuality: callNetworkQuality, participantCount, error, callError,
+     callDuration, autoAudioFallback,
+     activeCallId: currentCallId, setActiveCallId: setCurrentCallId, isAcceptingCall, cancelAcceptingCall,
+@@ -613,7 +613,18 @@
+         const id = (callRecord as { id: string }).id;
+         dispatchCallEvent({ type: "OUTGOING_SESSION_CREATED", callId: id, source: "insert-resolved" });
+         dispatchCallEvent({ type: "CONNECTING", source: "insert-resolved" });
+-        dispatchCallEvent({ type: "CONNECTED", source: "joinCall-resolved" });
++        // CONNECTION-SEMANTICS FIX (call-connect audit, item 3): joinCall()
++        // above only means WE joined the Daily room — for the caller that's
++        // the entire ringing window, before the other side has even picked
++        // up. Wait for real remote audio (bounded, so a rare missed
++        // "playable" transition can't strand this) before declaring
++        // CONNECTED, so the state machine and latency trace both reflect
++        // when the call actually became usable, not merely when our own
++        // join resolved. The visible "Ringing…" UI is unaffected — it
++        // already derives from participantCount via callUiState.ts, not
++        // from this machine transition.
++        const remoteAudioReady = await waitForRemoteAudioReady(8000);
++        dispatchCallEvent({ type: "CONNECTED", source: remoteAudioReady ? "remote-audio-ready" : "remote-audio-timeout" });
+       }
+ 
+       // Camera enumeration for the switch-camera picker now happens inside
+--- duospace-orig/src/pages/Chat.tsx	2026-09-12 05:12:59.000000000 +0000
++++ duospace/src/pages/Chat.tsx	2026-09-12 06:29:56.000170635 +0000
+@@ -291,7 +291,7 @@
+ 
+   const {
+     joinCall, leaveCall, toggleAudio, toggleVideo, toggleScreenShare,
+-    switchCamera, listCameras,
++    switchCamera, listCameras, waitForRemoteAudioReady,
+     isAudioOn, isVideoOn, isScreenSharing, callState,
+     localVideoRef, remoteVideoRef, screenShareRef,
+     networkQuality: callNetworkQuality, participantCount, error: callError,
+@@ -1700,6 +1700,13 @@
+         return;
+       }
+       if (callRecord) { setCurrentCallId((callRecord as any).id); markCallLatency("call_session_created"); }
++      // CONNECTION-SEMANTICS FIX (call-connect audit, item 3): joinCall()
++      // above only means WE joined the Daily room — wait for real remote
++      // audio (bounded) before finalizing the latency trace as
++      // "connected", so totalSetupLatencyMs reflects when the call
++      // actually became usable, not merely our own join. The visible
++      // "Ringing…"/toast UI is unaffected.
++      await waitForRemoteAudioReady(8000);
+       toast({ title:mode==="video"?"Video call started 📹":"Voice call started 📞" });
+       finishCallLatencyTrace("connected");
+     } catch (err: unknown) {

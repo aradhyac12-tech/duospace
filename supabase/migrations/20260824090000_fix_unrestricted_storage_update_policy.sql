@@ -1,0 +1,28 @@
+-- Applied directly to the live project (jzlpelxwzjjpddqcrtpu) on 2026-08-24
+-- via the Supabase MCP connector, during the Gallery Phase 5 cumulative
+-- audit (Part 17: storage RLS verification). This file exists so source
+-- control matches what's actually live.
+--
+-- storage.objects had two UPDATE policies covering overlapping buckets:
+--   "Users can update own files" -- bucket_id = ANY([...5 buckets]),
+--                                    NO folder/ownership check at all.
+--   "Users update own files"     -- same bucket list minus avatars/
+--                                    surprise-assets, correctly scoped by
+--                                    (storage.foldername(name))[1] = auth.uid().
+--   "avatars owner update"       -- correctly scoped, avatars only.
+--
+-- PERMISSIVE RLS policies for the same command are OR'd: because the
+-- first policy had no ownership check, its mere presence let any
+-- authenticated user overwrite any other user's file in chat-files,
+-- gallery, avatars, or memories -- completely undermining the correctly-
+-- scoped policies sitting next to it. Reads as a stale duplicate left
+-- over from before the folder-scoped versions were added -- the correct
+-- replacements already existed and already covered every bucket this one
+-- did except surprise-assets.
+--
+-- surprise-assets deliberately left untouched: its INSERT/DELETE
+-- policies are *also* unscoped by folder, consistently, which reads as
+-- an intentional design for that bucket rather than the same mistake --
+-- flagged as a separate, unconfirmed finding rather than changed here.
+
+DROP POLICY IF EXISTS "Users can update own files" ON storage.objects;

@@ -1,0 +1,5 @@
+
+ALTER TABLE public.profiles 
+  ADD COLUMN IF NOT EXISTS gender text DEFAULT NULL,
+  ADD COLUMN IF NOT EXISTS phone_number text DEFAULT NULL,
+  ADD COLUMN IF NOT EXISTS pet_name text DEFAULT NULL;

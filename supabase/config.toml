@@ -1,0 +1,5 @@
+project_id = "jzlpelxwzjjpddqcrtpu"
+# Instant Decline from the Android call notification. The native receiver has
+# no user session; the HMAC decline token (callActionToken.ts) is the auth.
+[functions.call-decline]
+verify_jwt = false

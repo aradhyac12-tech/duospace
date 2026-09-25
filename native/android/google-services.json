@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1039838759801",
+    "project_id": "duospace-c10b3",
+    "storage_bucket": "duospace-c10b3.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1039838759801:android:bd697fe0b745ecdf4b3da8",
+        "android_client_info": {
+          "package_name": "com.duospace.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDYXiBKO5ISj4pVZFaLioxnSoIe3lvgwXY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,0 +1,47 @@
+# Self-hosted calling stack — SIGNALING ONLY.
+#
+# MIGRATION (infra-layer only, calling architecture unchanged): media/SFU/
+# TURN moved from a self-hosted LiveKit + coturn container pair to LiveKit
+# Cloud (Build plan, free tier). This compose file now runs exactly one
+# service — the DuoSpace Call Gateway (call-control: offer/accept/reject/
+# cancel/end/ring-timeout). There is nothing left to self-host for media:
+# no `livekit` service, no `coturn` service, no TURN_CERT_DIR, no
+# LIVEKIT_NODE_IP. LiveKit Cloud's URL/API key/secret are consumed only by
+# the `livekit-token` Supabase edge function (via `supabase secrets set`)
+# — they are never read by this compose file or this host at all.
+#
+# ENVIRONMENTS. One compose file, three environments, selected entirely by
+# which env file you pass — nothing is inferred:
+#     docker compose --env-file .env            up     # local  (.env.example)
+#     docker compose --env-file .env.staging    up     # staging
+#     docker compose --env-file .env.production up     # production
+#
+# IMAGE PINNING: the signaling image builds from ../signaling on
+# `node:22-slim` (major-line pin only — pin a full tag/digest for
+# production).
+#
+# PHASE 4: `signaling` REQUIRES SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.
+# The gateway authorizes every call-control message against Supabase
+# (signaling_get_call_facts) and refuses to start without them. The
+# service-role key is SERVER-SIDE ONLY: never put it in a VITE_ variable,
+# never commit it.
+
+services:
+  signaling:
+    build:
+      context: ../signaling
+    ports:
+      - "${SIGNALING_PORT:-8787}:8787"
+    environment:
+      - PORT=8787
+      - SIGNALING_TICKET_SECRET=${SIGNALING_TICKET_SECRET:?set SIGNALING_TICKET_SECRET (same value as the signaling-ticket Supabase secret)}
+      - SUPABASE_URL=${SUPABASE_URL:?set SUPABASE_URL}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY:?set SUPABASE_SERVICE_ROLE_KEY}
+      - SIGNALING_ALLOWED_ORIGINS=${SIGNALING_ALLOWED_ORIGINS:-}
+      - SIGNALING_RING_TTL_MS=${SIGNALING_RING_TTL_MS:-40000}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8787/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped

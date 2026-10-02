@@ -1,0 +1,16 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls",
+      "delegate_permission/common.get_login_creds"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.duospace.app",
+      "sha256_cert_fingerprints": [
+        "REPLACE:WITH:RELEASE:KEYSTORE:SHA256:FINGERPRINT",
+        "REPLACE:WITH:DEBUG:KEYSTORE:SHA256:FINGERPRINT (only if you test debug builds)"
+      ]
+    }
+  }
+]

@@ -1,0 +1,21 @@
+-- MoodDetector.tsx has been inserting a `features` key into mood_logs
+-- since before this session (via `.insert({...} as any)` — the `as any`
+-- was silencing a real TypeScript error, not a false positive). No prior
+-- migration ever added this column, and generated types.ts confirms it
+-- was never part of the live schema. PostgREST rejects inserts containing
+-- an unknown column, so every camera-based mood-detection insert
+-- (selectManualMood's manual path doesn't send `features` and was
+-- presumably unaffected) has very likely been failing outright — silently,
+-- since the call site never checked `.error`, only `data`.
+--
+-- This migration makes the schema match what the code already sends,
+-- rather than stripping the field from the code — the probability
+-- distribution / raw feature values it carries are real, useful diagnostic
+-- data (see MoodDetector.tsx's scoreMoods()/softmaxScores(), and this is
+-- exactly what the mood-history/trends UI added in this same session reads).
+--
+-- IMPORTANT: this file only exists on disk in this sandboxed session — it
+-- has NOT been applied to the live database (no network access here to run
+-- `supabase db push`). Run it against the real project before relying on
+-- mood-history data being populated.
+ALTER TABLE public.mood_logs ADD COLUMN IF NOT EXISTS features jsonb;

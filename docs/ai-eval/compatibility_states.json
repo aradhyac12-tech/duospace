@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "cases": [
+    {"id": "all-empty", "comparisons": [], "expect": {"basis": "NONE", "allStates": "INSUFFICIENT_DATA"}},
+    {"id": "aligned-pace", "comparisons": [{"category": "PACE", "status": "ALIGNED"}], "expect": {"PACE": "ALIGNED"}},
+    {"id": "different-trust", "comparisons": [{"category": "TRUST", "status": "DIFFERENT"}], "expect": {"TRUST": "DIFFERENT", "clearestDifference": "TRUST"}},
+    {"id": "partner-not-shared", "comparisons": [{"category": "PACE", "status": "UNKNOWN", "unknownReason": "PARTNER_NOT_SHARED"}], "expect": {"basis": "ONE_PARTNER", "PACE": "DISCOVERING"}}
+  ]
+}

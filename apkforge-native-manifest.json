@@ -1,0 +1,24 @@
+{
+  "buildId": "0424a70c-5965-459e-91f5-5f5e1154e424",
+  "generatedAt": "2026-10-01T08:10:29.241Z",
+  "results": [
+    {
+      "platform": "android",
+      "validation": {
+        "platform": "android",
+        "status": "success",
+        "apkPath": "app/build/outputs/apk/debug/app-debug.apk",
+        "apkSize": "29814949"
+      }
+    },
+    {
+      "platform": "ios",
+      "validation": {
+        "scheme": "",
+        "status": "failed",
+        "appPath": "",
+        "platform": "ios"
+      }
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Shown in Settings > Apps > DuoSpace > Notifications as the
+         category name for the "now playing" media notification
+         (MediaPlaybackService). Kept a plain, discoverable label so a
+         person scanning their notification-channel list can tell at a
+         glance which toggle controls music playback controls. -->
+    <string name="audio_engine_notification_channel_name">Now playing</string>
+</resources>

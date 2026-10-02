@@ -1,0 +1,91 @@
+{
+  "method": "regex count of JSX text nodes, placeholder/title/aria-label/alt/label attributes and toast titles in src/**/*.tsx (approximate; excludes tests)",
+  "byCategory": {
+    "CORE APP UI": {
+      "files": 87,
+      "text": 580,
+      "attrs": 249,
+      "toasts": 258
+    },
+    "UI PRIMITIVES": {
+      "files": 14,
+      "text": 25,
+      "attrs": 6,
+      "toasts": 0
+    },
+    "AI OUTPUT / RELATIONSHIP PANELS": {
+      "files": 5,
+      "text": 104,
+      "attrs": 14,
+      "toasts": 33
+    },
+    "SETTINGS": {
+      "files": 10,
+      "text": 112,
+      "attrs": 34,
+      "toasts": 55
+    }
+  },
+  "topFiles": [
+    [
+      "src/pages/Groic.tsx",
+      86
+    ],
+    [
+      "src/pages/settings/PartnerSettings.tsx",
+      66
+    ],
+    [
+      "src/components/CodeSurpriseEditor.tsx",
+      61
+    ],
+    [
+      "src/pages/Gallery.tsx",
+      58
+    ],
+    [
+      "src/pages/Reflection.tsx",
+      53
+    ],
+    [
+      "src/pages/Playlist.tsx",
+      50
+    ],
+    [
+      "src/pages/Chat.tsx",
+      49
+    ],
+    [
+      "src/pages/Shayari.tsx",
+      48
+    ],
+    [
+      "src/components/relationship/RepairPanel.tsx",
+      45
+    ],
+    [
+      "src/pages/Auth.tsx",
+      45
+    ],
+    [
+      "src/components/IconStudio.tsx",
+      40
+    ],
+    [
+      "src/pages/Us.tsx",
+      38
+    ],
+    [
+      "src/pages/Onboarding.tsx",
+      36
+    ],
+    [
+      "src/components/BackupManager.tsx",
+      34
+    ],
+    [
+      "src/pages/Settings.tsx",
+      31
+    ]
+  ]
+}

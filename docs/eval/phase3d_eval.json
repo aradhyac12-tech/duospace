@@ -1,0 +1,42 @@
+{
+  "phase": "3D",
+  "totalCases": 264,
+  "note": "Synthetic, deterministic. Per-dimension only; no overall score. Summary 'accuracy' here = grounding against records, not human-judged usefulness.",
+  "dimensions": {
+    "comparison_correctness": {
+      "pass": 192,
+      "fail": 0,
+      "failures": []
+    },
+    "no_scoring_or_verdict": {
+      "pass": 252,
+      "fail": 0,
+      "failures": []
+    },
+    "partner_attribution": {
+      "pass": 192,
+      "fail": 0,
+      "failures": []
+    },
+    "grounding": {
+      "pass": 60,
+      "fail": 0,
+      "failures": []
+    },
+    "uncertainty_present": {
+      "pass": 60,
+      "fail": 0,
+      "failures": []
+    },
+    "stale_and_corrected_handling": {
+      "pass": 60,
+      "fail": 0,
+      "failures": []
+    },
+    "privacy": {
+      "pass": 12,
+      "fail": 0,
+      "failures": []
+    }
+  }
+}

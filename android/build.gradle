@@ -1,0 +1,35 @@
+// Top-level build file where you can add configuration options common to all sub-projects/modules.
+
+buildscript {
+    ext.kotlin_version = '2.1.0'
+    
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        // ---- PATCHED by scripts/patch-native-kotlin-versions.mjs ----
+        // Declare the Kotlin Gradle Plugin explicitly so CI does not
+        // back-fill a stale 1.9.25 classpath (which cannot compile
+        // Capacitor 8.x plugin sources written for Kotlin 2.x).
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:2.1.0"
+        classpath 'com.android.tools.build:gradle:8.13.0'
+        classpath 'com.google.gms:google-services:4.4.4'
+
+        // NOTE: Do not place your application dependencies here; they belong
+        // in the individual module build.gradle files
+    }
+}
+
+apply from: "variables.gradle"
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+task clean(type: Delete) {
+    delete rootProject.buildDir
+}

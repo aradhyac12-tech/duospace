@@ -1,0 +1,37 @@
+{
+  "small_history_10": {
+    "records": 10,
+    "retrieval_selectContext": {
+      "firstMs": 0.08,
+      "minMs": 0.002,
+      "p50Ms": 0.002,
+      "p95Ms": 0.011
+    },
+    "summary_rule": {
+      "firstMs": 0.647,
+      "minMs": 0.291,
+      "p50Ms": 0.348,
+      "p95Ms": 0.91
+    },
+    "storageBytesJson": 6209
+  },
+  "large_history_5000": {
+    "records": 5000,
+    "retrieval_selectContext": {
+      "firstMs": 3.05,
+      "minMs": 0.331,
+      "p50Ms": 0.357,
+      "p95Ms": 0.454
+    },
+    "summary_rule": {
+      "firstMs": 21.772,
+      "minMs": 9.221,
+      "p50Ms": 9.912,
+      "p95Ms": 21.772
+    },
+    "storageBytesJson": 3095795
+  },
+  "environment": "sandbox Node.js v22.22.2 — NOT a phone; device performance NOT MEASURED",
+  "heapUsedMB": 56.9,
+  "local_model": "NOT MEASURED — no real local model (Phase 2D BLOCKED)"
+}

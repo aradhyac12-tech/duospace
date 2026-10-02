@@ -1,0 +1,44 @@
+{
+  "name": "duospace-audio-engine",
+  "version": "1.0.0",
+  "description": "Local Capacitor plugin: native background-capable audio playback (lock-screen controls, notification media controls, Bluetooth/headset commands) for DuoSpace's music player.",
+  "main": "dist/plugin.cjs.js",
+  "module": "dist/esm/index.js",
+  "types": "dist/esm/index.d.ts",
+  "unpkg": "dist/plugin.js",
+  "files": [
+    "android/src/main/",
+    "android/build.gradle",
+    "dist/",
+    "ios/Plugin/",
+    "DuospaceAudioEngine.podspec"
+  ],
+  "author": "DuoSpace",
+  "license": "UNLICENSED",
+  "capacitor": {
+    "ios": {
+      "src": "ios"
+    },
+    "android": {
+      "src": "android"
+    }
+  },
+  "scripts": {
+    "build": "npm run clean && tsc && rollup -c rollup.config.mjs",
+    "clean": "rimraf ./dist",
+    "verify": "npm run verify:ios && npm run verify:android",
+    "verify:ios": "cd ios && pod install && xcodebuild -workspace Plugin.xcworkspace -scheme Plugin -destination generic/platform=iOS && cd ..",
+    "verify:android": "cd android && ./gradlew clean build test && cd .."
+  },
+  "peerDependencies": {
+    "@capacitor/core": "^8.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^8.2.0",
+    "@capacitor/core": "^8.2.0",
+    "@capacitor/ios": "^8.2.0",
+    "rimraf": "^5.0.0",
+    "rollup": "^4.0.0",
+    "typescript": "^5.0.0"
+  }
+}

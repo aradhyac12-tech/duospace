@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- app_id: DuoSpace's real AdMob App ID (public, ships in the APK).
+         test_banner_unit_id: Google's public TEST unit, used until a real unit
+         is passed from JS via VITE_ADMOB_BANNER_UNIT_ID (production bundles only). -->
+    <string name="duospace_admob_app_id" translatable="false">ca-app-pub-9602474807790470~4968934764</string>
+    <string name="duospace_admob_test_banner_unit_id" translatable="false">ca-app-pub-3940256099942544/9214589741</string>
+</resources>

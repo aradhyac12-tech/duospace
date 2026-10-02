@@ -1,0 +1,6 @@
+/* App shell — mobile-first, no desktop constraints. */
+#root {
+  width: 100%;
+  min-height: 100dvh;
+  overflow-x: hidden;
+}

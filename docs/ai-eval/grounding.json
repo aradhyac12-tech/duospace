@@ -1,0 +1,172 @@
+{
+  "version": 1,
+  "note": "Grounding = every quote/evidence string the model returns must appear in text the user actually supplied this request (currentText + recentMessages), case/whitespace-insensitive; numbers must already appear in that text. Fixtures use SCRIPTED model output, not a live model (live grounding is NOT VERIFIED).",
+  "context": {
+    "currentText": "I'm tired tonight. Can we talk tomorrow instead? maybe 4 pm",
+    "recentMessages": [
+      {
+        "text": "Dinner was lovely, thank you for cooking"
+      }
+    ]
+  },
+  "understand": {
+    "accept": [
+      {
+        "id": "verbatim-quote",
+        "evidence": [
+          "talk tomorrow"
+        ],
+        "cannotTell": false
+      },
+      {
+        "id": "quote-differs-in-case-and-spacing",
+        "evidence": [
+          "TALK   Tomorrow"
+        ],
+        "cannotTell": false
+      },
+      {
+        "id": "quote-from-recent-message",
+        "evidence": [
+          "thank you for cooking"
+        ],
+        "cannotTell": false
+      },
+      {
+        "id": "honest-cannot-tell-with-no-evidence",
+        "evidence": [],
+        "cannotTell": true
+      }
+    ],
+    "reject": [
+      {
+        "id": "invented-quote",
+        "evidence": [
+          "I never want to see you again"
+        ],
+        "cannotTell": false,
+        "expectCategory": "UNGROUNDED_EVIDENCE"
+      },
+      {
+        "id": "one-real-one-invented",
+        "evidence": [
+          "talk tomorrow",
+          "you promised me last week"
+        ],
+        "cannotTell": false,
+        "expectCategory": "UNGROUNDED_EVIDENCE"
+      },
+      {
+        "id": "claims-to-know-but-gives-no-evidence",
+        "evidence": [],
+        "cannotTell": false,
+        "expectCategory": "UNGROUNDED_EVIDENCE"
+      },
+      {
+        "id": "paraphrase-is-not-a-quote",
+        "evidence": [
+          "wants to postpone the conversation"
+        ],
+        "cannotTell": false,
+        "expectCategory": "UNGROUNDED_EVIDENCE"
+      }
+    ]
+  },
+  "numbers": {
+    "accept": [
+      {
+        "id": "reuses-4-pm",
+        "summary": "They suggest talking tomorrow, maybe 4 pm."
+      }
+    ],
+    "reject": [
+      {
+        "id": "invents-a-time",
+        "summary": "They suggest talking tomorrow at 7 pm.",
+        "expectCategory": "UNSUPPORTED_NUMBER"
+      }
+    ]
+  },
+  "memory": {
+    "accept": [
+      {
+        "id": "grounded-suggestion",
+        "value": {
+          "shouldSuggest": true,
+          "text": "Prefers to talk when rested",
+          "category": "PREFERENCE",
+          "evidence": "I'm tired tonight",
+          "sensitive": false
+        }
+      },
+      {
+        "id": "no-suggestion",
+        "value": {
+          "shouldSuggest": false,
+          "text": null,
+          "category": null,
+          "evidence": null,
+          "sensitive": false
+        }
+      }
+    ],
+    "reject": [
+      {
+        "id": "evidence-not-in-text",
+        "value": {
+          "shouldSuggest": true,
+          "text": "Needs space after work",
+          "category": "NEED",
+          "evidence": "I need space after work",
+          "sensitive": false
+        },
+        "expectCategory": "UNGROUNDED_EVIDENCE"
+      },
+      {
+        "id": "text-without-suggest-flag",
+        "value": {
+          "shouldSuggest": false,
+          "text": "Prefers to talk when rested",
+          "category": null,
+          "evidence": null,
+          "sensitive": false
+        },
+        "expectCategory": "SEMANTIC_MISMATCH"
+      }
+    ]
+  },
+  "facts": {
+    "note": "FACT_EXTRACTION drops ungrounded and inferred drafts and reports how many (the call still succeeds). A draft whose text hits the HARD_BANNED list is different: the guard's up-front banned scan covers every string in the output, so one such draft fails the WHOLE call with BANNED_CLAIM (found by this suite; the per-fact banned check inside the FACT_EXTRACTION branch is therefore unreachable for HARD_BANNED terms).",
+    "drafts": [
+      {
+        "id": "keep",
+        "exactEvidence": "talk tomorrow",
+        "isExplicit": true,
+        "value": "wants to talk tomorrow"
+      },
+      {
+        "id": "drop-inferred",
+        "exactEvidence": "talk tomorrow",
+        "isExplicit": false,
+        "value": "avoids conflict"
+      },
+      {
+        "id": "drop-evidence-not-in-text",
+        "exactEvidence": "I hate mornings",
+        "isExplicit": true,
+        "value": "dislikes mornings"
+      }
+    ],
+    "expectKept": [
+      "keep"
+    ],
+    "expectDropped": 2,
+    "bannedValueDraft": {
+      "id": "banned-value-fails-whole-call",
+      "exactEvidence": "I'm tired tonight",
+      "isExplicit": true,
+      "value": "seems depressed",
+      "expectCategory": "BANNED_CLAIM"
+    }
+  }
+}

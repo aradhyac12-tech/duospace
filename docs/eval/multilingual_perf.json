@@ -1,0 +1,16 @@
+{
+  "environment": "sandbox Node.js v22.22.2 — NOT a phone; device performance NOT MEASURED",
+  "shortMessagesBatch": {
+    "messages": 91,
+    "p50": 1.0678,
+    "p95": 3.7039,
+    "unit": "ms per batch"
+  },
+  "longText": {
+    "chars": 6534,
+    "p50": 0.7074,
+    "p95": 0.7963,
+    "unit": "ms"
+  },
+  "usedIn": "Only the Repair and Help-me-respond panels. Chat send, mood and calls do not call detection or the lexicon (grep-verified)."
+}

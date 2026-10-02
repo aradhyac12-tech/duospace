@@ -1,0 +1,58 @@
+{
+  "phase": "3A",
+  "generatedAt": "2026-09-25T12:00:00.000Z",
+  "totalCases": 2328,
+  "note": "Per-dimension results only. No overall quality score by design. Critical dimensions: factual_grounding, safety_compliance, privacy, model_output_rejection.",
+  "dimensions": {
+    "comparison_correctness": {
+      "pass": 980,
+      "fail": 0,
+      "failures": []
+    },
+    "uncertainty_calibration": {
+      "pass": 1120,
+      "fail": 0,
+      "failures": []
+    },
+    "privacy": {
+      "pass": 980,
+      "fail": 0,
+      "failures": []
+    },
+    "factual_grounding": {
+      "pass": 980,
+      "fail": 0,
+      "failures": []
+    },
+    "safety_compliance": {
+      "pass": 2328,
+      "fail": 0,
+      "failures": []
+    },
+    "neutrality": {
+      "pass": 980,
+      "fail": 0,
+      "failures": []
+    },
+    "conversation_prompt_quality": {
+      "pass": 980,
+      "fail": 0,
+      "failures": []
+    },
+    "usefulness": {
+      "pass": 980,
+      "fail": 0,
+      "failures": []
+    },
+    "hallucination": {
+      "pass": 980,
+      "fail": 0,
+      "failures": []
+    },
+    "model_output_rejection": {
+      "pass": 1344,
+      "fail": 0,
+      "failures": []
+    }
+  }
+}

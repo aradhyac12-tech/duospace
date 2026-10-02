@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Android 14+ requires this specific permission (in addition to the
+         general FOREGROUND_SERVICE permission, already declared at the app
+         level in scripts/patch-native-permissions.mjs for the calling
+         feature) for any service declaring foregroundServiceType
+         "mediaPlayback". Declared here, in the plugin's own manifest —
+         Gradle's manifest merger folds uses-permission entries from every
+         library module into the final app manifest automatically, the
+         same way audio-route's BLUETOOTH_CONNECT permission is merged
+         without needing any change to the app's own manifest or the patch
+         script. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <application>
+        <!-- MediaPlaybackService — see MediaPlaybackService.kt. A plain
+             foreground service (mediaPlayback type) owning the app's ONE
+             MediaSession and ONE now-playing notification, for both native
+             (ExoPlayer) and YouTube (mirrored from JS) playback. It is NOT a
+             Media3 MediaSessionService any more and there is no second
+             WebKeepAliveService: several competing sessions in one package
+             is what made the OS hide the controls (see the service header).
+             exported=false: commands arrive via the session / notification
+             PendingIntents, never by another app binding to it. -->
+        <service
+            android:name=".MediaPlaybackService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
+    </application>
+</manifest>

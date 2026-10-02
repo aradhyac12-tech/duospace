@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Play Billing Library needs no manifest permission beyond INTERNET,
+         which every Capacitor app already declares at the app level for its
+         network calls (Supabase, signaling, etc.) — nothing to add here. -->
+</manifest>

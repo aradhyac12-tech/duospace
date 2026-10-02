@@ -1,0 +1,38 @@
+{
+  "name": "duospace-billing",
+  "version": "1.0.0",
+  "description": "Local Capacitor plugin: Google Play Billing (subscriptions) for DuoSpace's Individual Plus / Couple Plus plans. Android only — see src/web.ts for why there is no real web/iOS implementation yet. Never trusts its own reported purchase result as proof of payment; the JS side must always send the returned purchaseToken to the verify-google-play-purchase Edge Function before treating a purchase as real (see src/definitions.ts header).",
+  "main": "dist/plugin.cjs.js",
+  "module": "dist/esm/index.js",
+  "types": "dist/esm/index.d.ts",
+  "unpkg": "dist/plugin.js",
+  "files": [
+    "android/src/main/",
+    "android/build.gradle",
+    "dist/",
+    "DuospaceBilling.podspec"
+  ],
+  "author": "DuoSpace",
+  "license": "UNLICENSED",
+  "capacitor": {
+    "android": {
+      "src": "android"
+    }
+  },
+  "scripts": {
+    "build": "npm run clean && tsc && rollup -c rollup.config.mjs",
+    "clean": "rimraf ./dist",
+    "verify": "npm run verify:android",
+    "verify:android": "cd android && ./gradlew clean build test && cd .."
+  },
+  "peerDependencies": {
+    "@capacitor/core": "^8.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^8.2.0",
+    "@capacitor/core": "^8.2.0",
+    "rimraf": "^5.0.0",
+    "rollup": "^4.0.0",
+    "typescript": "^5.0.0"
+  }
+}

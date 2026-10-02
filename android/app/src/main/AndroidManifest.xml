@@ -1,0 +1,177 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />
+
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+
+    <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
+
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+
+    <uses-permission android:name="android.permission.MANAGE_OWN_CALLS" />
+
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_PHONE_CALL" />
+
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+
+    <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
+
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <uses-permission android:name="android.permission.VIBRATE" />
+
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+    <uses-permission android:name="android.permission.CAMERA" />
+
+
+    <application
+        android:allowBackup="false"
+        android:fullBackupContent="false"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/AppTheme">
+
+        <activity
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
+            android:name=".MainActivity"
+            android:label="@string/title_activity_main"
+            android:theme="@style/AppTheme.NoActionBarLaunch"
+            android:launchMode="singleTask"
+            android:exported="true">
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <intent-filter>
+        <action android:name="android.intent.action.VIEW" />
+        <category android:name="android.intent.category.DEFAULT" />
+        <category android:name="android.intent.category.BROWSABLE" />
+        <data android:scheme="duospace" android:host="auth" />
+        <data android:scheme="duospace" android:host="call" />
+    </intent-filter>
+</activity>
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths"></meta-data>
+        </provider>
+        <service
+        android:name=".CallNotificationService"
+        android:exported="false">
+        <!-- android:priority: higher = first; CallNotificationService gets
+             priority 2 but handles only incoming-call types and delegates
+             everything else to DuoSpaceMessagingService.handlePush() — see
+             FCM routing fix in KI-08 and CallNotificationService.kt. -->
+        <intent-filter android:priority="2">
+            <action android:name="com.google.firebase.MESSAGING_EVENT" />
+        </intent-filter>
+    </service>
+    <service
+        android:name=".CallRingingService"
+        android:exported="false"
+        android:foregroundServiceType="phoneCall" />
+    <!-- Self-managed ConnectionService/TelecomManager integration — see
+         native/android/TelecomHelper.kt. android:exported must be true:
+         the Telecom system service (a different process/UID) is what binds
+         to this, not app-internal code, so it needs cross-process bind
+         access gated by the platform-signature BIND_TELECOM_CONNECTION_SERVICE
+         permission below — that permission is what actually restricts binding
+         to the OS, not android:exported="false" (which would block Telecom too). -->
+    <service
+        android:name=".DuoSpaceConnectionService"
+        android:exported="true"
+        android:permission="android.permission.BIND_TELECOM_CONNECTION_SERVICE">
+        <intent-filter>
+            <action android:name="android.telecom.ConnectionService" />
+        </intent-filter>
+    </service>
+    <!-- Caller-side "Calling…"/in-progress notification + proximity-sensor
+         screen-off — see native/android/CallOngoingService.kt. -->
+    <service
+        android:name=".CallOngoingService"
+        android:exported="false"
+        android:foregroundServiceType="phoneCall" />
+    <meta-data
+        android:name="com.google.firebase.messaging.default_notification_channel_id"
+        android:value="duospace_messages" />
+    <!-- Background/foreground location — see docs/BACKGROUND_LOCATION_NATIVE.md
+         and native/android/DuoSpaceLocationService.kt. Started directly by
+         CallNotificationService.kt above (every push) and by the
+         duospace-background-geolocation plugin. android:foregroundServiceType
+         requires ACCESS_FINE_LOCATION + ACCESS_BACKGROUND_LOCATION +
+         FOREGROUND_SERVICE_LOCATION, already added above. -->
+    <service
+        android:name=".DuoSpaceLocationService"
+        android:exported="false"
+        android:foregroundServiceType="location" />
+    <service
+        android:name=".DuoSpaceMessagingService"
+        android:exported="false">
+        <!-- Priority 1 (below CallNotificationService's 2): in practice,
+             FCM routing goes through CallNotificationService first, which
+             delegates non-call types here via handlePush(). This priority
+             ensures DuoSpaceMessagingService still catches messages on
+             devices where Android resolves to this service instead. -->
+        <intent-filter android:priority="1">
+            <action android:name="com.google.firebase.MESSAGING_EVENT" />
+        </intent-filter>
+    </service>
+    <service
+        android:name=".MessageAlertService"
+        android:exported="false"
+        android:foregroundServiceType="mediaPlayback" />
+    <receiver
+        android:name=".CallActionReceiver"
+        android:exported="false" />
+    <receiver
+        android:name=".LocationUpdateReceiver"
+        android:exported="false">
+        <intent-filter>
+            <action android:name="android.intent.action.BOOT_COMPLETED" />
+            <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+        </intent-filter>
+    </receiver>
+            <!-- CapacitorPasskey auto-configuration -->
+        <meta-data
+            android:name="asset_statements"
+            android:resource="@string/capacitor_passkey_asset_statements" />
+    </application>
+
+    <!-- Permissions -->
+
+    <uses-permission android:name="android.permission.INTERNET" />
+</manifest>

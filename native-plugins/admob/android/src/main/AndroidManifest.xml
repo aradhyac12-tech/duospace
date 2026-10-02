@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- REQUIRED by the Google Mobile Ads SDK: the app crashes at startup
+             without it. The value is a string resource so the real AdMob App
+             ID lives in the APP's res/values (which overrides this library's
+             default), never in this file. The default below is Google's
+             public TEST app ID — safe to ship for testing, earns nothing. -->
+        <meta-data
+            android:name="com.google.android.gms.ads.APPLICATION_ID"
+            android:value="@string/duospace_admob_app_id" />
+    </application>
+</manifest>

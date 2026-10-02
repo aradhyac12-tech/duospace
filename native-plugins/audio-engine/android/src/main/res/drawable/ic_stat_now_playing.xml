@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Status-bar / notification small icon for the music playback
+     notification. Deliberately a plain alpha-only glyph (single fill
+     color, no gradients/photographic content) — that's a hard Android
+     requirement for a notification's smallIcon; the app's regular
+     launcher icon does not qualify, which is the likely reason the
+     media notification was never rendering despite Media3 reporting
+     no exception when building it. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="#FFFFFFFF">
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M12,3v10.55c-0.59,-0.34 -1.27,-0.55 -2,-0.55c-2.21,0 -4,1.79 -4,4s1.79,4 4,4s4,-1.79 4,-4V7h4V3H12z" />
+</vector>

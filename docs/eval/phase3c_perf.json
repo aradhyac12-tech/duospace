@@ -1,0 +1,15 @@
+{
+  "environment": "sandbox Node.js v22.22.2 (NOT a phone; device performance NOT MEASURED)",
+  "runs": 300,
+  "RULE_BASED": {
+    "firstResponseMs": 0.579,
+    "p50Ms": 0.343,
+    "p95Ms": 0.633,
+    "ruleP50Ms": 0.071,
+    "validateP50Ms": 0.205,
+    "heapUsedMB": 45.1
+  },
+  "LOCAL_MODEL": "NOT MEASURED — no real local model artifact (Phase 2D BLOCKED)",
+  "CLOUD_MODEL": "NOT APPLICABLE — E2E cloud remains blocked; no cloud inference",
+  "fallbackFrequency": "NOT MEASURED — requires a real model"
+}

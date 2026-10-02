@@ -1,0 +1,24 @@
+project_id = "jzlpelxwzjjpddqcrtpu"
+# Instant Decline from the Android call notification. The native receiver has
+# no user session; the HMAC decline token (callActionToken.ts) is the auth.
+[functions.call-decline]
+verify_jwt = false
+
+# Called by Razorpay's servers with no Supabase JWT; auth is the HMAC signature
+# check inside the function (RAZORPAY_WEBHOOK_SECRET). Without this, a plain
+# `supabase functions deploy` makes the gateway reject every webhook with 401.
+[functions.razorpay-webhook]
+verify_jwt = false
+
+# Called by Google Pub/Sub push; auth is the OIDC JWT verified inside the
+# function (verifyPubSubJwt). Same gateway problem as above.
+[functions.google-play-rtdn]
+verify_jwt = false
+
+# Called by the Android native layer (DuoSpaceLocationService / LocationUpdateReceiver)
+# from a push-woken or dead app process that has NO Supabase session. Auth is the
+# per-device credential_id + secret checked inside the function. Without this entry a
+# plain `supabase functions deploy` resets verify_jwt to true and the gateway answers
+# every native upload with 401 -> push-triggered location/battery never lands.
+[functions.location-push-upload]
+verify_jwt = false

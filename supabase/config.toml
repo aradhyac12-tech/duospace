@@ -1,0 +1,47 @@
+project_id = "jzlpelxwzjjpddqcrtpu"
+# Instant Decline from the Android call notification. The native receiver has
+# no user session; the HMAC decline token (callActionToken.ts) is the auth.
+[functions.call-decline]
+verify_jwt = false
+
+# Called by Razorpay's servers with no Supabase JWT; auth is the HMAC signature
+# check inside the function (RAZORPAY_WEBHOOK_SECRET). Without this, a plain
+# `supabase functions deploy` makes the gateway reject every webhook with 401.
+[functions.razorpay-webhook]
+verify_jwt = false
+
+# Called by Google Pub/Sub push; auth is the OIDC JWT verified inside the
+# function (verifyPubSubJwt). Same gateway problem as above.
+[functions.google-play-rtdn]
+verify_jwt = false
+
+# Called by the Android native layer (DuoSpaceLocationService / LocationUpdateReceiver)
+# from a push-woken or dead app process that has NO Supabase session. Auth is the
+# per-device credential_id + secret checked inside the function. Without this entry a
+# plain `supabase functions deploy` resets verify_jwt to true and the gateway answers
+# every native upload with 401 -> push-triggered location/battery never lands.
+[functions.location-push-upload]
+verify_jwt = false
+
+# OTA / in-app update. Both are reachable without a Supabase JWT on purpose:
+# app-release-download must work from a signed-out app (an update can be the fix
+# for a broken sign-in) and only ever serves releases an admin PUBLISHED;
+# app-release-ios-manifest is fetched by iOS itself, which cannot send headers,
+# and is authenticated by an HMAC-signed 10-minute link. Without these entries a
+# plain `supabase functions deploy` resets verify_jwt to true and both would 401.
+[functions.app-release-download]
+verify_jwt = false
+
+[functions.app-release-ios-manifest]
+verify_jwt = false
+
+# Cloudinary media. All four user-facing functions verify the caller's JWT inside the
+# function (authenticate()) AND at the gateway (verify_jwt = true, the default).
+# cleanup-cloudinary-orphans is cron-only: bearer = LOVABLE_CRON_SECRET, no user JWT.
+[functions.cleanup-cloudinary-orphans]
+verify_jwt = false
+
+# call-ringing: native receiver acks "this phone is ringing" (no user session;
+# same single-call HMAC token as call-decline is the auth).
+[functions.call-ringing]
+verify_jwt = false

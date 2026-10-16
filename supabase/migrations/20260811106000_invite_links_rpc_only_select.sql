@@ -1,0 +1,33 @@
+-- ============================================================
+-- INVITE-LINK POLICY REVIEW (Phase 8.5 — item 4)
+--
+-- CONFIRMED FROM SOURCE: the client's invite-acceptance flow
+-- (src/pages/settings/PartnerSettings.tsx) calls the RPC
+-- `accept_invite(p_code, p_user_id)` exclusively. accept_invite is
+-- SECURITY DEFINER (see 20260511075549_...sql / 20260707054831_...sql /
+-- 20260708090100_...sql), so it looks up the invite_links row internally,
+-- bypassing RLS — it does not depend on the caller having SELECT access to
+-- invite_links at all. A full grep of src/ confirms invite_links is never
+-- selected directly from the client anywhere; the only other client access
+-- is the INSERT that creates a new invite (also in PartnerSettings.tsx).
+--
+-- The broad "Anyone can look up one unused unexpired invite" SELECT policy
+-- added in 20260811100000_fix_cross_partner_rls_exposure.sql (as a partial
+-- tightening of the previous fully-open "Anyone can lookup invite by code")
+-- is therefore not required by the application at all. It still lets any
+-- authenticated user enumerate every unused, unexpired invite code system-
+-- wide via SELECT (only the WHERE-clause scan is narrowed, not who can run
+-- it) — broader than necessary for a value that should be treated as a
+-- credential, not a browsable table.
+--
+-- FIX: remove it. The invite code becomes reachable only through
+-- accept_invite's SECURITY DEFINER lookup, matching the "invite code as a
+-- credential, not an enumerable table" principle. Creator visibility
+-- ("Creator can view own invite links") is untouched — a user can still
+-- see and manage invites they generated themselves.
+-- ============================================================
+
+DROP POLICY IF EXISTS "Anyone can look up one unused unexpired invite" ON public.invite_links;
+
+-- accept_invite itself is NOT modified — REVOKE/GRANT EXECUTE from prior
+-- migrations remain as-is (authenticated-only, SECURITY DEFINER).

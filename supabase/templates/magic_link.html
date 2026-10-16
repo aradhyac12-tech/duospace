@@ -1,0 +1,9 @@
+<!-- Supabase Dashboard > Authentication > Email Templates > "Magic link"
+     Subject: Your DuoSpace sign-in code
+     Sends a 6-digit code instead of a link (used for the "confirm it's you" step). -->
+<div style="font-family:system-ui,sans-serif;padding:24px;max-width:420px">
+  <h2 style="margin:0 0 12px">Your DuoSpace code</h2>
+  <p>Enter this code in the app to continue:</p>
+  <div style="font-size:32px;font-weight:700;letter-spacing:6px;margin:16px 0">{{ .Token }}</div>
+  <p style="color:#666;font-size:12px">This code expires shortly and can only be used once. If you didn't ask for it, ignore this email.</p>
+</div>

@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "note": "nextAdaptiveStep is deterministic: the app picks the dimension, the model only words the question. Order of checks: SESSION_LIMIT, COVERAGE, NOTHING_LEFT, else ASK the first dimension (fixed order) that is neither answered nor asked.",
+  "limits": { "MIN_DIMENSIONS_COVERED": 6, "MAX_QUESTIONS_PER_SESSION": 8 },
+  "cases": [
+    {"id": "fresh-start-asks-first-dimension", "answered": [], "asked": [], "questionsThisSession": 0, "expect": {"decision": "ASK", "category": "COMMUNICATION", "unknownCount": 16}},
+    {"id": "skips-already-asked-even-if-not-answered", "answered": [], "asked": ["COMMUNICATION"], "questionsThisSession": 1, "expect": {"decision": "ASK", "category": "RELATIONSHIP_DIRECTION", "unknownCount": 15}},
+    {"id": "skips-answered", "answered": ["COMMUNICATION", "RELATIONSHIP_DIRECTION"], "asked": ["COMMUNICATION", "RELATIONSHIP_DIRECTION"], "questionsThisSession": 2, "expect": {"decision": "ASK", "category": "PACE", "unknownCount": 14}},
+    {"id": "five-answered-keeps-asking", "answered": ["COMMUNICATION", "RELATIONSHIP_DIRECTION", "PACE", "AFFECTION", "INDEPENDENCE"], "asked": ["COMMUNICATION", "RELATIONSHIP_DIRECTION", "PACE", "AFFECTION", "INDEPENDENCE"], "questionsThisSession": 5, "expect": {"decision": "ASK", "category": "BOUNDARIES"}},
+    {"id": "six-answered-stops-on-coverage", "answered": ["COMMUNICATION", "RELATIONSHIP_DIRECTION", "PACE", "AFFECTION", "INDEPENDENCE", "BOUNDARIES"], "asked": ["COMMUNICATION", "RELATIONSHIP_DIRECTION", "PACE", "AFFECTION", "INDEPENDENCE", "BOUNDARIES"], "questionsThisSession": 6, "expect": {"decision": "ENOUGH_INFORMATION", "reason": "COVERAGE"}},
+    {"id": "seven-questions-keeps-asking", "answered": ["COMMUNICATION"], "asked": ["COMMUNICATION", "RELATIONSHIP_DIRECTION", "PACE", "AFFECTION", "INDEPENDENCE", "BOUNDARIES", "TRUST"], "questionsThisSession": 7, "expect": {"decision": "ASK", "category": "CONFLICT"}},
+    {"id": "eight-questions-stops-on-session-limit", "answered": ["COMMUNICATION"], "asked": ["COMMUNICATION", "RELATIONSHIP_DIRECTION", "PACE", "AFFECTION", "INDEPENDENCE", "BOUNDARIES", "TRUST", "CONFLICT"], "questionsThisSession": 8, "expect": {"decision": "ENOUGH_INFORMATION", "reason": "SESSION_LIMIT"}},
+    {"id": "session-limit-wins-over-coverage", "answered": ["COMMUNICATION", "RELATIONSHIP_DIRECTION", "PACE", "AFFECTION", "INDEPENDENCE", "BOUNDARIES"], "asked": [], "questionsThisSession": 8, "expect": {"decision": "ENOUGH_INFORMATION", "reason": "SESSION_LIMIT"}},
+    {"id": "everything-asked-nothing-left", "answered": ["COMMUNICATION", "PACE"], "asked": ["COMMUNICATION", "RELATIONSHIP_DIRECTION", "PACE", "AFFECTION", "INDEPENDENCE", "BOUNDARIES", "TRUST", "CONFLICT", "SUPPORT", "QUALITY_TIME", "LIFESTYLE", "FINANCES", "FAMILY", "FUTURE_PLANNING", "INTIMACY", "PERSONAL_GROWTH"], "questionsThisSession": 3, "expect": {"decision": "ENOUGH_INFORMATION", "reason": "NOTHING_LEFT"}}
+  ],
+  "simulations": [
+    {"id": "every-answer-is-not-sure", "behaviour": "asked-only", "expect": {"maxQuestions": 8, "neverRepeats": true, "endsWith": "SESSION_LIMIT"}},
+    {"id": "every-question-answered", "behaviour": "answered", "expect": {"maxQuestions": 6, "neverRepeats": true, "endsWith": "COVERAGE"}}
+  ]
+}

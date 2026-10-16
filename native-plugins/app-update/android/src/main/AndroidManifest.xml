@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Needed to hand a downloaded APK to the system installer (API 26+ also
+         requires the user to allow "Install unknown apps" for DuoSpace).
+         Restricted on Google Play: do not ship this plugin in a Play build. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
+    <application>
+        <!-- Its own FileProvider (distinct authority + paths file) so it can
+             never collide with the app's existing one. Exposes ONLY the
+             update-download directory. -->
+        <provider
+            android:name="com.duospace.appupdate.AppUpdateFileProvider"
+            android:authorities="${applicationId}.appupdate.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/duospace_appupdate_file_paths" />
+        </provider>
+    </application>
+</manifest>

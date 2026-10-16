@@ -1,0 +1,67 @@
+{
+  "phase": "3C",
+  "totalCases": 151,
+  "note": "Synthetic, non-identifying. Per-dimension only; no overall score. Safety-gate results measure these patterns on this set only — not real-world detection accuracy.",
+  "dimensions": {
+    "adversarial": {
+      "pass": 130,
+      "fail": 0,
+      "failures": []
+    },
+    "grounding": {
+      "pass": 8,
+      "fail": 0,
+      "failures": []
+    },
+    "safety": {
+      "pass": 8,
+      "fail": 0,
+      "failures": []
+    },
+    "fact_interpretation_separation": {
+      "pass": 8,
+      "fail": 0,
+      "failures": []
+    },
+    "unknowns_present": {
+      "pass": 8,
+      "fail": 0,
+      "failures": []
+    },
+    "usefulness": {
+      "pass": 11,
+      "fail": 0,
+      "failures": []
+    },
+    "no_positivity_bias": {
+      "pass": 8,
+      "fail": 0,
+      "failures": []
+    },
+    "model_output_rejection": {
+      "pass": 64,
+      "fail": 0,
+      "failures": []
+    },
+    "disagreement_preserved": {
+      "pass": 1,
+      "fail": 0,
+      "failures": []
+    },
+    "boundary_preserved": {
+      "pass": 1,
+      "fail": 0,
+      "failures": []
+    },
+    "safety_gate_true_positive": {
+      "pass": 8,
+      "fail": 0,
+      "failures": []
+    },
+    "safety_gate_false_positive": {
+      "pass": 6,
+      "fail": 0,
+      "failures": []
+    }
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "status": "BLOCKED",
+  "statusReason": "Model artifact could not be obtained from an authoritative source in the build environment (huggingface.co, cdn-lfs.hf.co, modelscope.cn all HTTP 403; the official huggingface/smollm GitHub repo does not distribute weights). No hash has been computed; none is fabricated.",
+  "checkedAt": "2026-09-23",
+  "modelId": "smollm2-360m-instruct-q4",
+  "modelFamily": "SmolLM2",
+  "parameterCount": "360M",
+  "architecture": "Llama-style decoder-only transformer",
+  "upstream": "HuggingFaceTB/SmolLM2-360M-Instruct",
+  "artifactSource": "https://huggingface.co/HuggingFaceTB/SmolLM2-360M-Instruct (ONNX export under onnx/)",
+  "artifactFormat": "ONNX (transformers.js), quantization q4",
+  "tokenizerFormat": "tokenizer.json (Hugging Face tokenizers)",
+  "contextLength": 2048,
+  "license": "Apache-2.0 (redistribution permitted with license/notice)",
+  "approxRamMB": "600 (estimate — NOT measured)",
+  "approxStorageMB": "250-300 (estimate — NOT measured)",
+  "modelVersion": "local-model-v1/smollm2-360m-instruct-q4@unpinned",
+  "runtimeVersion": "3",
+  "tokenizerVersion": null,
+  "outputSchemaVersion": 1,
+  "safetySpecVersion": 3,
+  "files": [
+    { "path": "config.json", "sha256": null, "bytes": null },
+    { "path": "generation_config.json", "sha256": null, "bytes": null },
+    { "path": "tokenizer.json", "sha256": null, "bytes": null },
+    { "path": "tokenizer_config.json", "sha256": null, "bytes": null },
+    { "path": "onnx/model_q4.onnx", "sha256": null, "bytes": null }
+  ],
+  "howToUnblock": "Download the files above from the upstream repo at a fixed revision on an unrestricted machine; run `LOCAL_MODEL_DIR=<dir> LOCAL_MODEL_PIN=1 npx vitest run src/test/ai/realModel.eval.test.ts`; copy the printed sha256/bytes into src/lib/relationship/localModel/manifest.ts and this file; set tokenizerVersion + modelVersion to the revision; then run the evaluation without LOCAL_MODEL_PIN."
+}

@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "note": "A COMPATIBILITY_EXPLAIN output that contradicts the deterministic dimensions must NOT pass the guard; one that agrees must pass.",
+  "dimensions": [
+    {"dimension": "pace", "state": "DIFFERENT"},
+    {"dimension": "trust", "state": "ALIGNED"},
+    {"dimension": "family", "state": "DISCOVERING"}
+  ],
+  "basis": "BOTH_PARTNERS",
+  "accept": [
+    {"headline": "You line up on trust, see pace differently, and are still discovering family.", "clearestDifference": "pace", "stillDiscovering": ["family"], "suggestedDiscussion": null, "basis": "BOTH_PARTNERS"}
+  ],
+  "reject": [
+    {"why": "wrong clearest difference (trust is ALIGNED)", "headline": "You differ on trust.", "clearestDifference": "trust", "stillDiscovering": ["family"], "suggestedDiscussion": null, "basis": "BOTH_PARTNERS"},
+    {"why": "pace listed as still discovering but is DIFFERENT", "headline": "Pace is still unknown.", "clearestDifference": "pace", "stillDiscovering": ["pace"], "suggestedDiscussion": null, "basis": "BOTH_PARTNERS"},
+    {"why": "basis changed", "headline": "Based on what you've shared.", "clearestDifference": "pace", "stillDiscovering": ["family"], "suggestedDiscussion": null, "basis": "ONE_PARTNER"},
+    {"why": "contains a number/score", "headline": "You are 80% aligned.", "clearestDifference": "pace", "stillDiscovering": ["family"], "suggestedDiscussion": null, "basis": "BOTH_PARTNERS"}
+  ]
+}

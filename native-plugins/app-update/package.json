@@ -1,0 +1,37 @@
+{
+  "name": "duospace-app-update",
+  "version": "1.0.0",
+  "description": "Local Capacitor plugin: in-app APK update for sideloaded DuoSpace builds. Android only. Downloads through the system DownloadManager (Wi-Fi-only or Wi-Fi+cellular, resumable, survives app kill), verifies SHA-256 + package + version + signing certificate, then hands the APK to the system installer. iOS has no native implementation: OTA install there is an itms-services link opened by the JS layer.",
+  "main": "dist/plugin.cjs.js",
+  "module": "dist/esm/index.js",
+  "types": "dist/esm/index.d.ts",
+  "unpkg": "dist/plugin.js",
+  "files": [
+    "android/src/main/",
+    "android/build.gradle",
+    "dist/"
+  ],
+  "author": "DuoSpace",
+  "license": "UNLICENSED",
+  "capacitor": {
+    "android": {
+      "src": "android"
+    }
+  },
+  "scripts": {
+    "build": "npm run clean && tsc && rollup -c rollup.config.mjs",
+    "clean": "rimraf ./dist",
+    "verify": "npm run verify:android",
+    "verify:android": "cd android && ./gradlew clean build test && cd .."
+  },
+  "peerDependencies": {
+    "@capacitor/core": "^8.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^8.2.0",
+    "@capacitor/core": "^8.2.0",
+    "rimraf": "^5.0.0",
+    "rollup": "^4.0.0",
+    "typescript": "^5.0.0"
+  }
+}

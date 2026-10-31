@@ -1,0 +1,31 @@
+{
+  "environment": "sandbox Node.js v22.22.2; runs=300 each. NOT a phone.",
+  "responseSupportEN": {
+    "p50": 0.217,
+    "p95": 1.06
+  },
+  "responseSupportHindiLimited": {
+    "p50": 0.033,
+    "p95": 0.068
+  },
+  "repairFlowReview": {
+    "p50": 0.233,
+    "p95": 0.54
+  },
+  "memorySummary200Records": {
+    "p50": 0.314,
+    "p95": 0.662
+  },
+  "safetyAndLanguageDetectionPerMessage": {
+    "p50": 0.006,
+    "p95": 0.007
+  },
+  "notMeasured": [
+    "app startup",
+    "Chat opening",
+    "message send",
+    "call connection",
+    "local-model AI response",
+    "device memory"
+  ]
+}

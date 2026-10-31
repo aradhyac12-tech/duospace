@@ -1,0 +1,48 @@
+{
+  "phase": "3B",
+  "totalCases": 432,
+  "scenarios": 39,
+  "note": "Synthetic, non-identifying. Per-dimension only; no overall score. Usefulness and responsiveness_quality are structural proxies, not human judgements.",
+  "dimensions": {
+    "grounding": {
+      "pass": 156,
+      "fail": 0,
+      "failures": []
+    },
+    "safety": {
+      "pass": 448,
+      "fail": 0,
+      "failures": []
+    },
+    "interpretation_accuracy": {
+      "pass": 192,
+      "fail": 0,
+      "failures": []
+    },
+    "uncertainty": {
+      "pass": 272,
+      "fail": 0,
+      "failures": []
+    },
+    "neutrality": {
+      "pass": 136,
+      "fail": 0,
+      "failures": []
+    },
+    "responsiveness_quality": {
+      "pass": 156,
+      "fail": 0,
+      "failures": []
+    },
+    "usefulness": {
+      "pass": 136,
+      "fail": 0,
+      "failures": []
+    },
+    "privacy": {
+      "pass": 4,
+      "fail": 0,
+      "failures": []
+    }
+  }
+}

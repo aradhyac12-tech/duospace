@@ -1,0 +1,37 @@
+{
+  "name": "duospace-admob",
+  "version": "1.0.0",
+  "description": "Local Capacitor plugin: AdMob adaptive banner for the DuoSpace free tier. Android only. Policy (who/where) lives in src/lib/monetization/adPolicy.ts; this plugin only draws what it is told to.",
+  "main": "dist/plugin.cjs.js",
+  "module": "dist/esm/index.js",
+  "types": "dist/esm/index.d.ts",
+  "unpkg": "dist/plugin.js",
+  "files": [
+    "android/src/main/",
+    "android/build.gradle",
+    "dist/"
+  ],
+  "author": "DuoSpace",
+  "license": "UNLICENSED",
+  "capacitor": {
+    "android": {
+      "src": "android"
+    }
+  },
+  "scripts": {
+    "build": "npm run clean && tsc && rollup -c rollup.config.mjs",
+    "clean": "rimraf ./dist",
+    "verify": "npm run verify:android",
+    "verify:android": "cd android && ./gradlew clean build test && cd .."
+  },
+  "peerDependencies": {
+    "@capacitor/core": "^8.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^8.2.0",
+    "@capacitor/core": "^8.2.0",
+    "rimraf": "^5.0.0",
+    "rollup": "^4.0.0",
+    "typescript": "^5.0.0"
+  }
+}

@@ -1,0 +1,48 @@
+-- ============================================================
+-- P0 FIX (Backend Hardening Pass — Section 3, RLS audit)
+--
+-- CONFIRMED SECURITY ISSUE, more serious than anything found in the prior
+-- remediation pass: `public.profiles` currently has TWO SELECT policies
+-- active simultaneously, because they have different names and neither was
+-- ever dropped:
+--
+--   "Authenticated users can view profiles" — FOR SELECT TO authenticated
+--     USING (true)   ← created 20260406223533, never dropped
+--   "Users can view partner profiles" — FOR SELECT TO authenticated
+--     USING (auth.uid() = user_id OR user_id = get_partner_id(auth.uid()))
+--     ← the one earlier fixed for its recursion bug this session
+--
+-- Postgres ORs all applicable permissive policies together for the same
+-- command, so the broad USING(true) policy alone has been enough to make
+-- the "properly scoped" one meaningless for as long as both existed — ANY
+-- authenticated user can SELECT every column of every other user's profile
+-- row, including `phone_number` (added 20260308233254 — meaning this has
+-- been bulk-scrapable since that migration), `partner_id`, `display_name`,
+-- `username`, `avatar_url`, `mood_text`, `location_mode`, and `public_key`.
+-- The earlier fix in this remediation pass (profiles-recursion fix)
+-- addressed the recursion bug in "Users can view partner profiles" but
+-- didn't catch that a second, differently-named, broader policy was
+-- coexisting with it the entire time — this migration closes that gap.
+--
+-- Original (20260308224547) already had this right — "Authenticated users
+-- can view profiles" was introduced as a regression one month later
+-- (20260406223533) and never removed since.
+--
+-- FIX: drop the broad policy. "Users can view partner profiles" already
+-- covers every legitimate read path (own profile, partner's profile);
+-- search_users() and get_user_id_by_email() are the correct
+-- SECURITY DEFINER paths for the narrow cross-user lookups the app
+-- actually needs (username/phone search, email→id for password reset),
+-- and neither of those depends on this policy.
+-- ============================================================
+
+DROP POLICY IF EXISTS "Authenticated users can view profiles" ON public.profiles;
+
+-- ============================================================
+-- REQUIRES LIVE ENVIRONMENT to close out: confirm no frontend code path
+-- relies on reading an arbitrary (non-partner, non-self) profile row
+-- directly via `.from("profiles").select(...)` rather than through
+-- search_users()/get_user_id_by_email() — a quick grep of src/ during this
+-- session found no such direct query, but a live smoke test of the
+-- "add partner" / search flow is the real confirmation.
+-- ============================================================

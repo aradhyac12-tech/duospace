@@ -1,0 +1,96 @@
+{
+  "note": "Self-authored probes, NOT native-reviewed. Danger probes vary phrasing from the lexicon; misses are real false negatives. Not a real-world accuracy estimate.",
+  "languages": {
+    "hi": {
+      "dangerTotal": 6,
+      "detected": 6,
+      "missed": [],
+      "benignTotal": 5,
+      "falsePositives": []
+    },
+    "hinglish": {
+      "dangerTotal": 8,
+      "detected": 8,
+      "missed": [],
+      "benignTotal": 8,
+      "falsePositives": []
+    },
+    "mr": {
+      "dangerTotal": 4,
+      "detected": 4,
+      "missed": [],
+      "benignTotal": 3,
+      "falsePositives": []
+    },
+    "bn": {
+      "dangerTotal": 4,
+      "detected": 4,
+      "missed": [],
+      "benignTotal": 3,
+      "falsePositives": []
+    },
+    "as": {
+      "dangerTotal": 3,
+      "detected": 3,
+      "missed": [],
+      "benignTotal": 2,
+      "falsePositives": []
+    },
+    "te": {
+      "dangerTotal": 4,
+      "detected": 4,
+      "missed": [],
+      "benignTotal": 3,
+      "falsePositives": []
+    },
+    "ta": {
+      "dangerTotal": 4,
+      "detected": 4,
+      "missed": [],
+      "benignTotal": 3,
+      "falsePositives": []
+    },
+    "kn": {
+      "dangerTotal": 3,
+      "detected": 3,
+      "missed": [],
+      "benignTotal": 2,
+      "falsePositives": []
+    },
+    "ml": {
+      "dangerTotal": 3,
+      "detected": 3,
+      "missed": [],
+      "benignTotal": 2,
+      "falsePositives": []
+    },
+    "gu": {
+      "dangerTotal": 3,
+      "detected": 3,
+      "missed": [],
+      "benignTotal": 2,
+      "falsePositives": []
+    },
+    "pa": {
+      "dangerTotal": 3,
+      "detected": 3,
+      "missed": [],
+      "benignTotal": 2,
+      "falsePositives": []
+    },
+    "or": {
+      "dangerTotal": 3,
+      "detected": 3,
+      "missed": [],
+      "benignTotal": 2,
+      "falsePositives": []
+    },
+    "en": {
+      "dangerTotal": 3,
+      "detected": 3,
+      "missed": [],
+      "benignTotal": 3,
+      "falsePositives": []
+    }
+  }
+}
